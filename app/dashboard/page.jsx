@@ -382,6 +382,6 @@ export default function DashboardPage() {
           <button>close</button>
         </div>
       </dialog>
-    </div >
+    </div>
   );
 }

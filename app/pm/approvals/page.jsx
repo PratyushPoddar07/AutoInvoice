@@ -139,15 +139,17 @@ export default function PMApprovalsPage() {
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: idx * 0.05 }}
                             >
-                                <div className="flex justify-between items-start mb-4">
-                                    <div>
-                                        <h3 className="text-lg font-semibold text-white">
-                                            {invoice.invoiceNumber || `Invoice ${invoice.id.slice(0, 8)}`}
-                                        </h3>
-                                        <p className="text-gray-400">
-                                            {invoice.vendorCode && <span className="font-mono text-purple-300 mr-1">{invoice.vendorCode}</span>}
-                                            {invoice.vendorName}
-                                        </p>
+                                <Card className="p-6 h-full flex flex-col border-slate-200/60 hover:shadow-xl hover:shadow-slate-200/40 transition-all group">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <h3 className="text-lg font-semibold text-slate-800">
+                                                {invoice.invoiceNumber || `Invoice ${invoice.id.slice(0, 8)}`}
+                                            </h3>
+                                            <p className="text-slate-500 font-medium">
+                                                {invoice.vendorCode && <span className="font-mono text-indigo-600 mr-1.5 px-1.5 py-0.5 bg-indigo-50 rounded italic">{invoice.vendorCode}</span>}
+                                                {invoice.vendorName}
+                                            </p>
+                                        </div>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm mb-6">
@@ -186,7 +188,7 @@ export default function PMApprovalsPage() {
                                     )}
 
                                     {/* Actions */}
-                                    <div className="flex flex-wrap gap-2 pt-6 border-t border-slate-100">
+                                    <div className="mt-auto flex flex-wrap gap-2 pt-6 border-t border-slate-100">
                                         <button
                                             onClick={() => setActionModal({ invoice, action: 'APPROVE' })}
                                             disabled={processingId === invoice.id}
@@ -292,6 +294,6 @@ export default function PMApprovalsPage() {
                     )}
                 </AnimatePresence>
             </div>
-        </div>
+        </div >
     );
 }
