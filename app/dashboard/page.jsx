@@ -35,6 +35,7 @@ export default function DashboardPage() {
   });
   const [activeTab, setActiveTab] = useState("overview");
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Protect route and send vendors to vendor page
   useEffect(() => {
@@ -108,23 +109,34 @@ export default function DashboardPage() {
     : (user?.role === ROLES.VENDOR || user?.role?.toLowerCase() === 'vendor');
 
   const filteredInvoices = invoices.filter(inv => {
-    // 0. Status Filter
+    // 0. Search Filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const matchesSearch =
+        inv.vendorName?.toLowerCase().includes(query) ||
+        inv.invoiceNumber?.toLowerCase().includes(query) ||
+        inv.id?.toLowerCase().includes(query) ||
+        inv.amount?.toString().includes(query);
+      if (!matchesSearch) return false;
+    }
+
+    // 1. Status Filter
     if (statusFilter !== "ALL" && inv.status !== statusFilter) return false;
 
     if (!user) return false;
     const role = user.role;
 
-    // 1. Full Access Roles
+    // 2. Full Access Roles
     if ([ROLES.ADMIN, ROLES.FINANCE_USER].includes(role)) {
       return true;
     }
 
-    // 2. Project Managers - Specific Statuses Only
+    // 3. Project Managers - Specific Statuses Only
     if (isPM) {
       return ['VERIFIED', 'MATCH_DISCREPANCY', 'PENDING_APPROVAL'].includes(inv.status);
     }
 
-    // 3. Vendors / Others - No Access (Pending Vendor Portal)
+    // 4. Vendors / Others - No Access (Pending Vendor Portal)
     return false;
   });
 
@@ -183,16 +195,18 @@ export default function DashboardPage() {
 
   // Refined Dashboard Actions - Unified for all roles
   const dashboardActions = (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto">
       {isAdmin && <RoleSwitcher />}
 
       {/* Search Bar - Global for Dashboard */}
-      <div className="hidden lg:flex items-center bg-white/40 border border-white/60 rounded-xl px-3 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all">
+      <div className="flex items-center bg-white/40 border border-white/60 rounded-xl px-3 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all flex-1 md:flex-none min-w-[140px] md:min-w-0">
         <Icon name="Search" size={14} className="text-slate-400" />
         <input
           type="text"
-          placeholder="Search items..."
-          className="bg-transparent border-none outline-none text-xs ml-2 w-32 xl:w-48 placeholder:text-slate-400 font-medium"
+          placeholder="Search..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="bg-transparent border-none outline-none text-xs ml-2 w-full md:w-32 xl:w-48 placeholder:text-slate-400 font-medium"
         />
       </div>
 
@@ -224,9 +238,9 @@ export default function DashboardPage() {
       {!isPM && !isVendor && (
         <button
           onClick={() => setIsUploadModalOpen(true)}
-          className="flex items-center gap-2 h-10 px-6 bg-linear-to-br from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg shadow-indigo-500/20 active:scale-95 transition-all whitespace-nowrap"
+          className="flex items-center justify-center gap-2 h-10 px-4 sm:px-6 bg-linear-to-br from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg shadow-indigo-500/20 active:scale-95 transition-all whitespace-nowrap flex-1 sm:flex-none"
         >
-          <Icon name="Plus" size={15} /> New Invoice
+          <Icon name="Plus" size={15} /> <span className="hidden sm:inline">New Invoice</span><span className="sm:hidden">New</span>
         </button>
       )}
     </div>
