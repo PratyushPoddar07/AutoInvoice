@@ -87,6 +87,11 @@ export async function PUT(request, { params }) {
 
         const user = await db.createUser(updateData);
 
+        // If it's a PM, ensure assignments are synced across models
+        if (updateData.role === ROLES.PROJECT_MANAGER && updateData.assignedProjects) {
+            await db.syncPMAssignments(id, updateData.assignedProjects);
+        }
+
         // Audit trail
         const changes = [];
         if (role && role !== existingUser.role) changes.push(`role: ${existingUser.role} → ${role}`);

@@ -24,17 +24,20 @@ export default function PMApprovalsPage() {
     const fetchInvoices = async () => {
         try {
             setLoading(true);
-            // Optimization: Fetch only relevant statuses
-            const res = await fetch('/api/invoices?status=PENDING,VERIFIED,PENDING_APPROVAL');
+            // Optimization: Fetch only relevant statuses - Standardized to SNAKE_CASE to match backend standard
+            const res = await fetch('/api/invoices?status=RECEIVED,DIGITIZING,VALIDATION_REQUIRED,VERIFIED,MATCH_DISCREPANCY,PENDING_APPROVAL');
             const data = await res.json();
             if (!res.ok) throw new Error(data.error);
 
-            // Filter for invoices pending PM approval
+            // Filter for invoices pending PM approval - Standardized to SNAKE_CASE to match backend standard
             let pending = (data.invoices || []).filter(inv =>
-                inv.status === 'Pending' ||
-                inv.status === 'Verified' ||
-                inv.pmApproval?.status === 'PENDING' ||
-                !inv.pmApproval?.status
+                inv.status === 'RECEIVED' ||
+                inv.status === 'DIGITIZING' ||
+                inv.status === 'VALIDATION_REQUIRED' ||
+                inv.status === 'VERIFIED' ||
+                inv.status === 'PENDING_APPROVAL' ||
+                inv.status === 'MATCH_DISCREPANCY' ||
+                (inv.pmApproval?.status === 'PENDING' || !inv.pmApproval?.status)
             );
 
             if (filterProject) {

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import User from '@/models/User';
 import Otp from '@/models/Otp';
-import { sendStatusNotification } from '@/lib/notifications';
+import { sendStatusNotification, sendEmailAndLog } from '@/lib/notifications';
 
 /**
  * POST /api/auth/otp/request
@@ -47,52 +47,18 @@ export async function POST(request) {
             { upsert: true, new: true }
         );
 
-        // Send OTP via Email
-        // We reuse sendStatusNotification logic but adapt it for OTP
-        // Since sendStatusNotification is specific to invoices, we'll use a direct email call if possible
-        // or mock an "invoice" object if we must reuse that specific function.
-        // BETTER APPROACH: Import 'sendEmailAndLog' if it was exported, but it's not.
-        // So we will use `sendStatusNotification`'s internal logic concepts or
-        // modify `lib/notifications.js` to export `sendEmailAndLog`.
+        // Send OTP via Email using the shared notification logic
+        const status = await sendEmailAndLog({
+            recipient: user.email,
+            subject: `Your Login OTP for InvoiceFlow`,
+            message: `Your One-Time Password (OTP) for InvoiceFlow is:\n\n${otp}\n\nThis code expires in 10 minutes.\n\nIf you did not request this, please ignore this email.`,
+            notificationType: 'OTP'
+        });
 
-        // Let's modify lib/notifications.js to export sendEmailAndLog first? 
-        // Or just use a specific "OTP" type notification.
-
-        // Actually, we can just use the underlying specific email sending logic here for now
-        // to avoid modifying shared libs too much, OR better:
-        // Update lib/notifications.js to support OTP.
-
-        // For now, I'll inline the SendGrid call here for simplicity, 
-        // matching the logic in lib/notifications.js
-
-        const apiKey = process.env.SENDGRID_API_KEY;
-        if (apiKey) {
-            const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${apiKey}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    personalizations: [{ to: [{ email: user.email }] }],
-                    from: {
-                        email: process.env.FROM_EMAIL || "system@invoicetracker.internal",
-                        name: process.env.COMPANY_NAME || "Invoice Tracker"
-                    },
-                    subject: `Your Login OTP for InvoiceFlow`,
-                    content: [{
-                        type: "text/plain",
-                        value: `Your One-Time Password (OTP) for InvoiceFlow is:\n\n${otp}\n\nThis code expires in 10 minutes.\n\nIf you did not request this, please ignore this email.`
-                    }]
-                })
-            });
-
-            if (!response.ok) {
-                console.error('Failed to send OTP email via SendGrid');
-                // Don't fail the request, just log it. In prod this is bad, but for now ok.
-            }
-        } else {
-            console.warn('SENDGRID_API_KEY not set. OTP:', otp);
+        if (status === 'FAILED') {
+            return NextResponse.json({
+                error: 'Failed to deliver OTP email. Please contact support if this persists.'
+            }, { status: 500 });
         }
 
         return NextResponse.json({

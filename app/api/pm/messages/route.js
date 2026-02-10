@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Message from '@/models/Message';
 import { getSession } from '@/lib/auth';
-import { requireRole } from '@/lib/rbac';
+import { requireRole, getNormalizedRole } from '@/lib/rbac';
 import { ROLES } from '@/constants/roles';
 import { db } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
@@ -94,6 +94,19 @@ export async function POST(request) {
         const recipient = await db.getUserById(recipientId);
         if (!recipient) {
             return NextResponse.json({ error: 'Recipient not found' }, { status: 404 });
+        }
+
+        // Security Check: Ensure PM is allowed to message this recipient
+        // Admin can message anyone. PM/Vendor checks...
+        const userRole = getNormalizedRole(session.user);
+        if (userRole === ROLES.PROJECT_MANAGER) {
+            const allowedVendors = await db.getVendorsForProjects(session.user.assignedProjects || []);
+            const isAuthorized = allowedVendors.some(v => v.linkedUserId === recipientId || v.id === recipientId);
+
+            // Also allow messaging other PMs/Admins if needed, but for now strict vendor focus
+            if (!isAuthorized && recipient.role === ROLES.VENDOR) {
+                return NextResponse.json({ error: 'Not authorized to message this vendor' }, { status: 403 });
+            }
         }
 
         // Create message

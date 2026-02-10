@@ -20,11 +20,16 @@ export default function ProjectManagerDashboard({ user, invoices = [], filteredI
     const [delegationDuration, setDelegationDuration] = useState(7);
     const [submittingDelegation, setSubmittingDelegation] = useState(false);
 
+    const [currentDelegation, setCurrentDelegation] = useState(null);
+
     useEffect(() => {
         if (showDelegateModal) {
             fetch('/api/pm/delegate')
                 .then(res => res.json())
-                .then(data => setDelegates(Array.isArray(data) ? data : []))
+                .then(data => {
+                    setDelegates(data.delegates || []);
+                    setCurrentDelegation(data.currentDelegation || null);
+                })
                 .catch(err => console.error("Failed to fetch delegates", err));
         }
     }, [showDelegateModal]);
@@ -53,10 +58,21 @@ export default function ProjectManagerDashboard({ user, invoices = [], filteredI
         }
     };
 
-    // Filter Logic for PM
-    const pendingApprovals = invoices.filter(inv => inv.status === 'PENDING_APPROVAL');
-    const discrepancies = invoices.filter(inv => inv.status === 'MATCH_DISCREPANCY');
-    const approvedInvoices = invoices.filter(inv => inv.status === 'PM Approved' || inv.pmApproval?.status === 'APPROVED');
+    // Filter Logic for PM - Standardized to SNAKE_CASE to match backend standard
+    const pendingApprovals = invoices.filter(inv =>
+        inv.status === 'RECEIVED' ||
+        inv.status === 'DIGITIZING' ||
+        inv.status === 'VALIDATION_REQUIRED' ||
+        inv.status === 'VERIFIED' ||
+        inv.status === 'PENDING_APPROVAL' ||
+        inv.status === 'MATCH_DISCREPANCY' ||
+        (inv.pmApproval?.status === 'PENDING' || !inv.pmApproval?.status)
+    );
+    const discrepancies = invoices.filter(inv => inv.status === 'MATCH_DISCREPANCY' || inv.matching?.discrepancies?.length > 0);
+    const approvedInvoices = invoices.filter(inv =>
+        inv.pmApproval?.status === 'APPROVED' ||
+        inv.status === 'PAID'
+    );
 
     const stats = [
         {
@@ -330,6 +346,26 @@ export default function ProjectManagerDashboard({ user, invoices = [], filteredI
                                     </select>
                                 </div>
 
+                                {currentDelegation && (
+                                    <div className="p-4 bg-purple-50 rounded-2xl border border-purple-100">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-purple-600 mb-1">Current Delegation</p>
+                                        <div className="flex justify-between items-center">
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-700">
+                                                    {delegates.find(d => d.id === currentDelegation.to)?.name || 'Active Delegate'}
+                                                </p>
+                                                <p className="text-[10px] text-slate-400 font-bold uppercase">Expires: {new Date(currentDelegation.expiresAt).toLocaleDateString()}</p>
+                                            </div>
+                                            <button
+                                                onClick={() => { setSelectedDelegate(''); handleDelegate(); }}
+                                                className="px-3 py-1 bg-white text-rose-600 border border-rose-100 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all shadow-sm"
+                                            >
+                                                Revoke
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div>
                                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Duration (Days)</label>
                                     <input
@@ -424,7 +460,7 @@ export default function ProjectManagerDashboard({ user, invoices = [], filteredI
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <Link
-                                                href={`/pm/approvals`}
+                                                href={`/pm/approvals?invoiceId=${inv.id}`}
                                                 className="inline-flex items-center gap-2 h-8 px-4 bg-white border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-600 hover:border-indigo-600 hover:text-indigo-600 transition-all shadow-sm active:scale-95"
                                             >
                                                 View <Icon name="ExternalLink" size={10} />

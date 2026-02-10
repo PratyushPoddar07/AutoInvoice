@@ -101,13 +101,11 @@ export async function POST(request) {
         if (assignedPMs?.length) {
             for (const pmId of assignedPMs) {
                 const user = await db.getUserById(pmId);
-                if (user && user.role === ROLES.PROJECT_MANAGER) {
-                    const projects = [...(user.assignedProjects || []), project.id];
-                    await db.createUser({
-                        ...user,
-                        passwordHash: user.password_hash,
-                        assignedProjects: [...new Set(projects)]
-                    });
+                if (user && getNormalizedRole(user) === ROLES.PROJECT_MANAGER) {
+                    const currentProjects = user.assignedProjects || [];
+                    if (!currentProjects.includes(project.id)) {
+                        await db.syncPMAssignments(pmId, [...currentProjects, project.id]);
+                    }
                 }
             }
         }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import DocumentUpload from '@/models/DocumentUpload';
+import User from '@/models/User';
 import { getSession } from '@/lib/auth';
 import { requireRole, checkPermission, getNormalizedRole } from '@/lib/rbac';
 import { ROLES } from '@/constants/roles';
@@ -11,6 +12,34 @@ import { validateTimesheet, validateRateCard } from '@/lib/services/validation';
 
 /**
  * GET /api/pm/documents - List PM's uploaded documents
+ */
+/**
+ * Get all project IDs that a PM can access (assigned + delegated)
+ */
+async function getAccessibleProjectIds(userId) {
+    try {
+        // Get the user's assigned projects
+        const user = await User.findOne({ id: userId });
+        const assignedProjectIds = user?.assignedProjects || [];
+
+        // Check for projects delegated TO this user
+        const delegators = await User.find({
+            delegatedTo: userId,
+            delegationExpiresAt: { $gt: new Date() }
+        });
+        const delegatedProjectIds = delegators.flatMap(u => u.assignedProjects || []);
+
+        // Return unique project IDs
+        return [...new Set([...assignedProjectIds, ...delegatedProjectIds])];
+    } catch (error) {
+        console.error('Failed to get accessible project IDs:', error);
+        return [];
+    }
+}
+
+/**
+ * GET /api/pm/documents - List PM's uploaded documents
+ * Also accessible by Admin and Finance users
  */
 export async function GET(request) {
     try {
@@ -34,12 +63,33 @@ export async function GET(request) {
 
         let query = {};
 
-        // PMs only see their own uploads, admins and finance see all
         if (userRole === ROLES.PROJECT_MANAGER) {
-            query.uploadedBy = session.user.id;
+            // PMs only see documents for projects they are assigned to or delegated to
+            const accessibleProjectIds = await getAccessibleProjectIds(session.user.id);
+
+            if (accessibleProjectIds.length === 0) {
+                // PM has no accessible projects - return empty
+                return NextResponse.json({ documents: [] });
+            }
+
+            query.projectId = { $in: accessibleProjectIds };
+        }
+        // Admin and Finance users see all documents (no restriction)
+
+        if (projectId) {
+            // Additional security: ensure projectId is accessible if PM
+            if (userRole === ROLES.PROJECT_MANAGER) {
+                const accessibleProjectIds = await getAccessibleProjectIds(session.user.id);
+                if (!accessibleProjectIds.includes(projectId)) {
+                    return NextResponse.json(
+                        { error: 'Access denied: project not assigned or delegated' },
+                        { status: 403 }
+                    );
+                }
+            }
+            query.projectId = projectId;
         }
 
-        if (projectId) query.projectId = projectId;
         if (type) query.type = type;
         if (status) query.status = status;
 
@@ -81,6 +131,19 @@ export async function POST(request) {
         const projectName = formData.get('projectName');
         const vendorId = formData.get('vendorId');
         const description = formData.get('description');
+
+        // Verify projectId ownership for PMs (Admin and Finance can upload to any project)
+        const role = getNormalizedRole(session.user);
+        if (role === ROLES.PROJECT_MANAGER && projectId) {
+            const accessibleProjectIds = await getAccessibleProjectIds(session.user.id);
+
+            if (!accessibleProjectIds.includes(projectId)) {
+                return NextResponse.json(
+                    { error: 'Access denied: project is not assigned or delegated to you' },
+                    { status: 403 }
+                );
+            }
+        }
 
         if (!file || !type) {
             return NextResponse.json(

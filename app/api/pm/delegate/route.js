@@ -18,11 +18,20 @@ export async function GET() {
 
         await connectToDatabase();
 
+        // Fetch current delegation status
+        const currentUserData = await User.findOne({ id: user.id }, 'delegatedTo delegationExpiresAt');
+
         // Fetch eligible delegates (e.g. Finance Users or Admins)
         // For simplicity, let's allow Finance Users
         const financeUsers = await User.find({ role: ROLES.FINANCE_USER }, 'id name email');
 
-        return NextResponse.json(financeUsers);
+        return NextResponse.json({
+            delegates: financeUsers,
+            currentDelegation: currentUserData.delegatedTo ? {
+                to: currentUserData.delegatedTo,
+                expiresAt: currentUserData.delegationExpiresAt
+            } : null
+        });
     } catch (error) {
         console.error('Error fetching delegates:', error);
         return NextResponse.json({ error: 'Failed to fetch delegates' }, { status: 500 });
