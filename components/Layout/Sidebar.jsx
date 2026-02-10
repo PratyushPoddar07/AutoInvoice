@@ -22,6 +22,8 @@ const menuItems = [
   { name: "Messages", icon: "Mail", path: "/pm/messages" },
   { name: "Vendors", icon: "Users", path: "/vendors" },
   { name: "Analytics", icon: "BarChart3", path: "/analytics" },
+  { name: "Finance Dashboard", icon: "LayoutPanelLine", path: "/finance/dashboard" },
+  { name: "Manual Entry", icon: "FilePlus", path: "/finance/manual-entry" },
   { name: "Configuration", icon: "Settings", path: "/config" },
   { name: "User Management", icon: "Shield", path: "/users" },
   { name: "Audit Logs", icon: "FileText", path: "/audit" },

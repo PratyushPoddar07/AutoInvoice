@@ -50,9 +50,12 @@ export async function GET() {
             const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
             const dateStr = d.toISOString().split('T')[0];
 
-            const count = invoices.filter(inv =>
-                (inv.receivedAt || inv.created_at || '').startsWith(dateStr)
-            ).length;
+            const count = invoices.filter(inv => {
+                const dateVal = inv.receivedAt || inv.created_at;
+                if (!dateVal) return false;
+                const dateStrVal = new Date(dateVal).toISOString().split('T')[0];
+                return dateStrVal.startsWith(dateStr);
+            }).length;
 
             volumeOverTime.push({ name: dayName, value: count });
         }

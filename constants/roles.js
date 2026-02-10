@@ -1,17 +1,33 @@
 /**
  * Helper to normalize role strings
- * Handles variations like 'Project Manager' -> 'PM'
+ * Handles variations like 'Project Manager' -> 'PM', 'Finance User' -> 'Finance User'
+ * Case-insensitive and handles both space and underscore variations
  */
 export const getNormalizedRole = (user) => {
     if (!user?.role) return '';
-    const rawRole = user.role;
-    if (rawRole === 'Project Manager' || rawRole === 'ProjectManager' || rawRole?.toLowerCase() === 'project manager') {
+    const rawRole = user.role.toLowerCase();
+
+    // Project Manager variations
+    if (['projectmanager', 'project manager', 'project-manager', 'pm'].includes(rawRole)) {
         return ROLES.PROJECT_MANAGER;
     }
-    if (rawRole === 'FinanceUser' || rawRole === 'Finance User') {
+
+    // Finance User variations
+    if (['financeuser', 'finance user', 'finance-user', 'finance_user'].includes(rawRole)) {
         return ROLES.FINANCE_USER;
     }
-    return rawRole;
+
+    // Vendor variations
+    if (rawRole === 'vendor') {
+        return ROLES.VENDOR;
+    }
+
+    // Admin variations
+    if (rawRole === 'admin') {
+        return ROLES.ADMIN;
+    }
+
+    return user.role; // Return original if no match
 };
 
 /**
@@ -39,7 +55,9 @@ export const MENU_PERMISSIONS = {
     'Documents': [ROLES.ADMIN, ROLES.FINANCE_USER, ROLES.PROJECT_MANAGER],
     'Messages': [ROLES.ADMIN, ROLES.PROJECT_MANAGER, ROLES.VENDOR],
     'Vendors': [ROLES.ADMIN, ROLES.FINANCE_USER, ROLES.VENDOR],
-    'Analytics': [ROLES.ADMIN],
+    'Analytics': [ROLES.ADMIN, ROLES.FINANCE_USER],
+    'Finance Dashboard': [ROLES.ADMIN, ROLES.FINANCE_USER],
+    'Manual Entry': [ROLES.ADMIN, ROLES.FINANCE_USER],
     'Configuration': [ROLES.ADMIN],
     'User Management': [ROLES.ADMIN],
     'Audit Logs': [ROLES.ADMIN]

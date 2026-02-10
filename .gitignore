@@ -38,7 +38,7 @@ yarn-error.log*
 .vercel
 
 # local state
-/uploads
+/public/uploads/
 /invoices_db.json
 /backend/node_modules
 
