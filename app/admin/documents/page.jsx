@@ -209,7 +209,7 @@ export default function AdminDocumentsPage() {
                                         <td className="px-4 py-3 text-center">
                                             {doc.fileUrl ? (
                                                 <a
-                                                    href={doc.fileUrl}
+                                                    href={doc.source === 'invoice' ? `/api/invoices/${doc.id}/file` : doc.fileUrl}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-semibold hover:bg-purple-700 transition-colors"

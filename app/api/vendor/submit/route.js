@@ -7,8 +7,6 @@ import { requireRole } from '@/lib/rbac';
 import { ROLES } from '@/constants/roles';
 import { db } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
 
 /**
  * POST /api/vendor/submit - Submit invoice with documents (Vendor only)
@@ -48,18 +46,12 @@ export async function POST(request) {
             );
         }
 
-        // Create uploads directory
-        const uploadsDir = path.join(process.cwd(), 'uploads', 'invoices');
-        await mkdir(uploadsDir, { recursive: true });
-
-        // Save invoice file
-        const invoiceBytes = await invoiceFile.arrayBuffer();
-        const invoiceBuffer = Buffer.from(invoiceBytes);
+        // Vercel Fix: Store as Base64 Data URI instead of writing to filesystem
+        const invoiceBuffer = Buffer.from(await invoiceFile.arrayBuffer());
+        const invoiceBase64 = invoiceBuffer.toString('base64');
+        const invoiceMimeType = invoiceFile.type || 'application/pdf';
+        const invoiceFileUrl = `data:${invoiceMimeType};base64,${invoiceBase64}`;
         const invoiceId = uuidv4();
-        const invoiceExt = path.extname(invoiceFile.name);
-        const invoiceFileName = `${invoiceId}${invoiceExt}`;
-        const invoiceFilePath = path.join(uploadsDir, invoiceFileName);
-        await writeFile(invoiceFilePath, invoiceBuffer);
 
         // Create invoice record
         const invoice = await Invoice.create({
@@ -73,7 +65,7 @@ export async function POST(request) {
             date: invoiceDate || null,
             amount: amount ? parseFloat(amount) : null,
             status: 'Pending',
-            fileUrl: `/uploads/invoices/${invoiceFileName}`,
+            fileUrl: invoiceFileUrl,
             project: project || null,
             assignedPM: assignedPM || null,
             pmApproval: { status: 'PENDING' },
@@ -84,25 +76,22 @@ export async function POST(request) {
 
         // Process additional documents
         const documentIds = [];
-        const docsDir = path.join(process.cwd(), 'uploads', 'documents');
-        await mkdir(docsDir, { recursive: true });
 
         // Save timesheet if provided
         if (timesheetFile) {
-            const tsBytes = await timesheetFile.arrayBuffer();
-            const tsBuffer = Buffer.from(tsBytes);
+            const tsBuffer = Buffer.from(await timesheetFile.arrayBuffer());
+            const tsBase64 = tsBuffer.toString('base64');
+            const tsMimeType = timesheetFile.type || 'application/pdf';
+            const tsFileUrl = `data:${tsMimeType};base64,${tsBase64}`;
             const tsId = uuidv4();
-            const tsExt = path.extname(timesheetFile.name);
-            const tsFileName = `${tsId}${tsExt}`;
-            await writeFile(path.join(docsDir, tsFileName), tsBuffer);
 
             await DocumentUpload.create({
                 id: tsId,
                 invoiceId: invoiceId,
                 type: 'TIMESHEET',
                 fileName: timesheetFile.name,
-                fileUrl: `/uploads/documents/${tsFileName}`,
-                mimeType: timesheetFile.type,
+                fileUrl: tsFileUrl,
+                mimeType: tsMimeType,
                 fileSize: tsBuffer.length,
                 uploadedBy: session.user.id,
                 metadata: {
@@ -116,20 +105,19 @@ export async function POST(request) {
 
         // Save Annex if provided
         if (annexFile) {
-            const annexBytes = await annexFile.arrayBuffer();
-            const annexBuffer = Buffer.from(annexBytes);
+            const annexBuffer = Buffer.from(await annexFile.arrayBuffer());
+            const annexBase64 = annexBuffer.toString('base64');
+            const annexMimeType = annexFile.type || 'application/pdf';
+            const annexFileUrl = `data:${annexMimeType};base64,${annexBase64}`;
             const annexId = uuidv4();
-            const annexExt = path.extname(annexFile.name);
-            const annexFileName = `${annexId}${annexExt}`;
-            await writeFile(path.join(docsDir, annexFileName), annexBuffer);
 
             await DocumentUpload.create({
                 id: annexId,
                 invoiceId: invoiceId,
                 type: 'ANNEX',
                 fileName: annexFile.name,
-                fileUrl: `/uploads/documents/${annexFileName}`,
-                mimeType: annexFile.type,
+                fileUrl: annexFileUrl,
+                mimeType: annexMimeType,
                 fileSize: annexBuffer.length,
                 uploadedBy: session.user.id,
                 metadata: {
