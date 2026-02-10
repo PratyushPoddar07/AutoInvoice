@@ -42,7 +42,23 @@ export async function POST(request) {
 
         // Login successful: Generate session
         // We reuse the 'login' function from lib/auth which sets the cookie
-        await login(user);
+
+        // Fix: Convert Mongoose doc to plain object and normalize role
+        let normalizedRole = user.role;
+        if (user.role === 'Project Manager' || user.role === 'ProjectManager') {
+            normalizedRole = 'PM';
+        }
+
+        const sessionUser = {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: normalizedRole,
+            vendorId: user.vendorId, // Include vendorId for role-based logic
+            isActive: user.isActive !== false
+        };
+
+        await login(sessionUser);
 
         // Delete the used OTP to prevent replay attacks
         await Otp.deleteOne({ _id: validOtp._id });
