@@ -128,7 +128,7 @@ export default function UserManagementPage() {
     };
 
     return (
-        <div className="p-8 max-w-7xl mx-auto">
+        <div className="px-4 sm:px-8 py-6 sm:py-8 max-w-7xl mx-auto">
             <PageHeader
                 title="User Management"
                 subtitle="Create, modify, and deactivate user accounts"
@@ -137,54 +137,54 @@ export default function UserManagementPage() {
                 actions={
                     <button
                         onClick={handleAdd}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl shadow-lg shadow-primary/20 hover:bg-primary-hover transition-all"
+                        className="flex items-center justify-center gap-2 h-10 px-4 sm:px-6 bg-primary text-white text-[10px] sm:text-xs font-black uppercase tracking-widest rounded-xl shadow-lg shadow-primary/20 hover:bg-primary-hover active:scale-95 transition-all whitespace-nowrap"
                     >
-                        <Icon name="UserPlus" size={20} />
-                        Add User
+                        <Icon name="UserPlus" size={18} />
+                        <span className="hidden xs:inline">Add User</span><span className="xs:hidden">Add</span>
                     </button>
                 }
             />
 
             {/* Stats Overview */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 gap-4 mb-6">
                 <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-4 border border-white/20 shadow-sm flex items-center justify-between">
                     <div>
-                        <p className="text-sm text-gray-500 font-medium">Total Users</p>
-                        <h3 className="text-2xl font-bold text-gray-800">{users.length}</h3>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Total Users</p>
+                        <h3 className="text-xl sm:text-2xl font-bold text-gray-800">{users.length}</h3>
                     </div>
-                    <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-                        <Icon name="Users" size={24} />
+                    <div className="p-2 sm:p-3 bg-blue-50 text-blue-600 rounded-xl">
+                        <Icon name="Users" size={20} />
                     </div>
                 </div>
                 <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-4 border border-white/20 shadow-sm flex items-center justify-between">
                     <div>
-                        <p className="text-sm text-gray-500 font-medium">Active Users</p>
-                        <h3 className="text-2xl font-bold text-green-600">{users.filter(u => u.isActive !== false).length}</h3>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Active</p>
+                        <h3 className="text-xl sm:text-2xl font-bold text-green-600">{users.filter(u => u.isActive !== false).length}</h3>
                     </div>
-                    <div className="p-3 bg-green-50 text-green-600 rounded-xl">
-                        <Icon name="CheckCircle" size={24} />
+                    <div className="p-2 sm:p-3 bg-green-50 text-green-600 rounded-xl">
+                        <Icon name="CheckCircle" size={20} />
                     </div>
                 </div>
-                <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-4 border border-white/20 shadow-sm flex items-center justify-between">
+                <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-4 border border-white/20 shadow-sm flex items-center justify-between xs:col-span-2 md:col-span-1">
                     <div>
-                        <p className="text-sm text-gray-500 font-medium">Inactive Users</p>
-                        <h3 className="text-2xl font-bold text-red-500">{users.filter(u => u.isActive === false).length}</h3>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Inactive</p>
+                        <h3 className="text-xl sm:text-2xl font-bold text-red-500">{users.filter(u => u.isActive === false).length}</h3>
                     </div>
-                    <div className="p-3 bg-red-50 text-red-500 rounded-xl">
-                        <Icon name="XCircle" size={24} />
+                    <div className="p-2 sm:p-3 bg-red-50 text-red-500 rounded-xl">
+                        <Icon name="XCircle" size={20} />
                     </div>
                 </div>
             </div>
 
             {/* Filters */}
-            <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/20 shadow-lg p-4 mb-6">
-                <div className="flex flex-col md:flex-row gap-4">
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/20 shadow-lg p-3 sm:p-4 mb-6">
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                     <div className="flex-1 relative">
-                        <Icon name="Search" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
                             type="text"
-                            placeholder="Search by name or email..."
-                            className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            placeholder="Search name or email..."
+                            className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm rounded-xl border border-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white/50"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
@@ -192,7 +192,7 @@ export default function UserManagementPage() {
                     <select
                         value={filterRole}
                         onChange={(e) => setFilterRole(e.target.value)}
-                        className="px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white"
+                        className="px-4 py-2 text-xs sm:text-sm rounded-xl border border-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white/50 font-medium shrink-0"
                     >
                         <option value="ALL">All Roles</option>
                         {Object.values(ROLES).map(role => (
@@ -219,11 +219,11 @@ export default function UserManagementPage() {
                         <table className="w-full">
                             <thead>
                                 <tr className="border-b border-gray-100 bg-gray-50/50">
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">User</th>
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Scope</th>
-                                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                                    <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">User</th>
+                                    <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 hidden sm:table-cell">Role</th>
+                                    <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">Status</th>
+                                    <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 hidden md:table-cell">Scope</th>
+                                    <th className="px-6 py-4 text-right text-[10px] font-black uppercase tracking-widest text-gray-400">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -231,45 +231,50 @@ export default function UserManagementPage() {
                                     <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-gray-100 to-gray-200 flex items-center justify-center text-gray-600 font-semibold">
+                                                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-tr from-gray-100 to-gray-200 flex items-center justify-center text-gray-600 font-bold text-sm">
                                                     {user.name?.charAt(0) || "?"}
                                                 </div>
-                                                <div>
-                                                    <div className="font-medium text-gray-900">{user.name}</div>
-                                                    <div className="text-sm text-gray-500">{user.email}</div>
+                                                <div className="min-w-0">
+                                                    <div className="font-bold text-gray-900 text-xs sm:text-sm truncate max-w-[120px] sm:max-w-none">{user.name}</div>
+                                                    <div className="text-[10px] sm:text-xs text-gray-500 truncate max-w-[120px] sm:max-w-none">{user.email}</div>
+                                                    <div className="sm:hidden mt-0.5">
+                                                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${roleColors[user.role] || 'bg-gray-50 text-gray-600 border-gray-100'}`}>
+                                                            {user.role}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className={`px-3 py-1 rounded-full text-xs font-medium border ${roleColors[user.role] || 'bg-gray-50 text-gray-600 border-gray-100'}`}>
+                                        <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
+                                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${roleColors[user.role] || 'bg-gray-50 text-gray-600 border-gray-100'}`}>
                                                 {user.role}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <button
                                                 onClick={() => handleToggleStatus(user)}
-                                                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${user.isActive !== false
+                                                className={`flex items-center gap-1.5 px-2 py-0.5 sm:px-3 sm:py-1 rounded-full text-[9px] sm:text-xs font-bold border transition-colors ${user.isActive !== false
                                                     ? 'bg-green-50 text-green-700 border-green-100 hover:bg-green-100'
                                                     : 'bg-red-50 text-red-700 border-red-100 hover:bg-red-100'
                                                     }`}
                                             >
-                                                <div className={`w-2 h-2 rounded-full ${user.isActive !== false ? 'bg-green-500' : 'bg-red-400'}`}></div>
-                                                {user.isActive !== false ? 'Active' : 'Inactive'}
+                                                <div className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${user.isActive !== false ? 'bg-green-500' : 'bg-red-400'}`}></div>
+                                                {user.isActive !== false ? 'Active' : 'Off'}
                                             </button>
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-4 hidden md:table-cell">
                                             {user.assignedProjects?.length > 0 && (
                                                 <div className="flex flex-wrap gap-1">
                                                     {user.assignedProjects.map(p => (
-                                                        <span key={p} className="px-2 py-0.5 bg-gray-100 rounded text-xs text-gray-600">{p}</span>
+                                                        <span key={p} className="px-2 py-0.5 bg-gray-100 rounded text-[10px] font-bold text-gray-600 border border-gray-200">{p}</span>
                                                     ))}
                                                 </div>
                                             )}
                                             {user.vendorId && (
-                                                <span className="text-xs text-gray-500">Vendor: {user.vendorCode || user.vendorId}</span>
+                                                <span className="text-[10px] font-bold text-gray-500">Vendor: {user.vendorCode || user.vendorId}</span>
                                             )}
                                             {!user.assignedProjects?.length && !user.vendorId && (
-                                                <span className="text-xs text-gray-400">Global Access</span>
+                                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Global</span>
                                             )}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right">

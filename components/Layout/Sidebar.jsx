@@ -66,12 +66,12 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
 
       <aside
         className={clsx(
-          "flex-col h-screen sticky top-0 z-50 pt-6 pb-6 transition-[width] duration-300 ease-in-out",
+          "flex-col h-screen sticky top-0 z-50 pt-6 pb-6 transition-[width,transform] duration-300 ease-in-out",
           // Desktop styles
           "hidden lg:flex pl-6",
           !mobileOpen && (collapsed ? "w-[5rem]" : "w-72"),
           // Mobile Styles (Drawer mode)
-          mobileOpen ? "!flex fixed inset-y-0 left-0 !w-72 p-6" : ""
+          mobileOpen ? "!flex fixed inset-y-0 left-0 w-[280px] sx:w-80 p-4 lg:p-6 bg-slate-50/50 backdrop-blur-md" : "-translate-x-full lg:translate-x-0"
         )}
       >
         <div className="glass-panel h-full rounded-3xl flex flex-col justify-between overflow-hidden p-3 relative border border-white/20 shadow-xl bg-white/80">

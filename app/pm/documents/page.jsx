@@ -22,6 +22,7 @@ export default function PMDocumentsPage() {
     const [uploading, setUploading] = useState(false);
     const [filterType, setFilterType] = useState('');
     const [filterProject, setFilterProject] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
     const fileInputRef = useRef(null);
 
     const [uploadData, setUploadData] = useState({
@@ -38,7 +39,7 @@ export default function PMDocumentsPage() {
     useEffect(() => {
         fetchDocuments();
         fetchProjects();
-    }, [filterType, filterProject]);
+    }, [filterType, filterProject, searchQuery]);
 
     const fetchDocuments = async () => {
         try {
@@ -144,49 +145,65 @@ export default function PMDocumentsPage() {
         }
     };
 
+    const categories = [
+        { id: 'RINGI', label: 'Ringi', icon: 'FileText' },
+        { id: 'ANNEX', label: 'Annex', icon: 'File' },
+        { id: 'TIMESHEET', label: 'Timesheet', icon: 'Calendar' },
+    ];
+
     return (
-        <div className="pb-10">
+        <div className="px-4 sm:px-8 py-6 sm:py-8 min-h-screen">
             <PageHeader
-                title="Document Management"
-                subtitle="Upload and manage project documents (Ringi, Annex, Timesheet)"
-                icon="FileText"
-                accent="purple"
+                title="Document Repository"
+                subtitle="Master storage for Ringi, Annex, and Timesheets"
+                icon="Folder"
+                accent="indigo"
+                actions={
+                    <button
+                        onClick={() => setShowUploadModal(true)}
+                        className="flex items-center justify-center gap-2 h-10 px-4 sm:px-6 bg-linear-to-br from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg shadow-indigo-500/20 active:scale-95 transition-all whitespace-nowrap"
+                    >
+                        <Icon name="Plus" size={16} /> <span className="hidden xs:inline">Upload New</span><span className="xs:hidden">Upload</span>
+                    </button>
+                }
             />
 
             <div className="max-w-7xl mx-auto space-y-6">
-                {/* Filters & Actions */}
-                <Card className="p-6">
-                    <div className="flex flex-col lg:flex-row gap-6 items-start lg:items-center justify-between">
-                        <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
-                            <select
-                                value={filterType}
-                                onChange={(e) => setFilterType(e.target.value)}
-                                className="w-full sm:w-48 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all font-medium"
-                            >
-                                <option value="">All Types</option>
-                                {DOCUMENT_TYPES.map(t => (
-                                    <option key={t.value} value={t.value}>{t.label}</option>
-                                ))}
-                            </select>
-                            <select
-                                value={filterProject}
-                                onChange={(e) => setFilterProject(e.target.value)}
-                                className="w-full sm:w-64 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all font-medium"
-                            >
-                                <option value="">All Projects</option>
-                                {projects.map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                            </select>
+                {/* Filters */}
+                <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/20 shadow-lg p-3 sm:p-4 mb-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                        <div className="relative">
+                            <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                                type="text"
+                                placeholder="Search documents..."
+                                className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm rounded-xl border border-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white/50"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
                         </div>
-                        <button
-                            onClick={() => setShowUploadModal(true)}
-                            className="w-full sm:w-auto px-8 py-3 bg-linear-to-br from-purple-600 to-indigo-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-purple-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                        <select
+                            value={filterType}
+                            onChange={(e) => setFilterType(e.target.value)}
+                            className="px-4 py-2 text-xs sm:text-sm rounded-xl border border-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white/50 font-medium"
                         >
-                            <Icon name="Plus" size={16} /> Upload Document
-                        </button>
+                            <option value="">All Types</option>
+                            {DOCUMENT_TYPES.map(t => (
+                                <option key={t.value} value={t.value}>{t.label}</option>
+                            ))}
+                        </select>
+                        <select
+                            value={filterProject}
+                            onChange={(e) => setFilterProject(e.target.value)}
+                            className="px-4 py-2 text-xs sm:text-sm rounded-xl border border-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white/50 font-medium sm:col-span-2 lg:col-span-1"
+                        >
+                            <option value="">All Projects</option>
+                            {projects.map(p => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
                     </div>
-                </Card>
+                </div>
 
                 {/* Messages */}
                 <AnimatePresence mode="wait">
@@ -222,70 +239,77 @@ export default function PMDocumentsPage() {
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {documents.map((doc, idx) => (
-                            <motion.div
-                                key={doc.id}
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: idx * 0.05 }}
-                            >
-                                <Card className="h-full hover:shadow-md transition-all border-slate-200/60 p-6">
-                                    <div className="flex justify-between items-start mb-6">
-                                        <div className="flex items-center gap-4 min-w-0">
-                                            <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
-                                                <Icon name="File" className="text-slate-400" size={24} />
+                        {documents
+                            .filter(doc =>
+                                !searchQuery ||
+                                doc.fileName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                doc.metadata?.projectName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                doc.type.toLowerCase().includes(searchQuery.toLowerCase())
+                            )
+                            .map((doc, idx) => (
+                                <motion.div
+                                    key={doc.id}
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: idx * 0.05 }}
+                                >
+                                    <Card className="h-full hover:shadow-md transition-all border-slate-200/60 p-6">
+                                        <div className="flex justify-between items-start mb-6">
+                                            <div className="flex items-center gap-4 min-w-0">
+                                                <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
+                                                    <Icon name="File" className="text-slate-400" size={24} />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <h3 className="text-sm font-bold text-slate-800 truncate" title={doc.fileName}>
+                                                        {doc.fileName}
+                                                    </h3>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-0.5">
+                                                        {(doc.fileSize / 1024).toFixed(1)} KB
+                                                    </p>
+                                                </div>
                                             </div>
-                                            <div className="min-w-0">
-                                                <h3 className="text-sm font-bold text-slate-800 truncate" title={doc.fileName}>
-                                                    {doc.fileName}
-                                                </h3>
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-0.5">
-                                                    {(doc.fileSize / 1024).toFixed(1)} KB
-                                                </p>
-                                            </div>
+                                            <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border shrink-0 ${getTypeClasses(doc.type)}`}>
+                                                {doc.type.replace('_', ' ')}
+                                            </span>
                                         </div>
-                                        <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border shrink-0 ${getTypeClasses(doc.type)}`}>
-                                            {doc.type.replace('_', ' ')}
-                                        </span>
-                                    </div>
 
-                                    <div className="space-y-3 mb-6">
-                                        {doc.metadata?.projectName && (
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Project</span>
-                                                <span className="text-xs font-bold text-slate-700 truncate ml-4 text-right">{doc.metadata.projectName}</span>
-                                            </div>
-                                        )}
-                                        {doc.metadata?.billingMonth && (
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Month</span>
-                                                <span className="text-xs font-bold text-slate-700">{doc.metadata.billingMonth}</span>
-                                            </div>
-                                        )}
-                                        {doc.metadata?.ringiNumber && (
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ringi #</span>
-                                                <span className="text-xs font-bold text-slate-700">{doc.metadata.ringiNumber}</span>
-                                            </div>
-                                        )}
-                                    </div>
+                                        <div className="space-y-3 mb-6">
+                                            {doc.metadata?.projectName && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Project</span>
+                                                    <span className="text-xs font-bold text-slate-700 truncate ml-4 text-right">{doc.metadata.projectName}</span>
+                                                </div>
+                                            )}
+                                            {doc.metadata?.billingMonth && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Month</span>
+                                                    <span className="text-xs font-bold text-slate-700">{doc.metadata.billingMonth}</span>
+                                                </div>
+                                            )}
+                                            {doc.metadata?.ringiNumber && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ringi #</span>
+                                                    <span className="text-xs font-bold text-slate-700">{doc.metadata.ringiNumber}</span>
+                                                </div>
+                                            )}
+                                        </div>
 
-                                    <div className="flex justify-between items-center pt-6 border-t border-slate-100">
-                                        <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border ${getStatusClasses(doc.status)}`}>
-                                            {doc.status}
-                                        </span>
-                                        <a
-                                            href={doc.fileUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 font-black text-[10px] uppercase tracking-widest transition-colors"
-                                        >
-                                            View <Icon name="ArrowRight" size={12} />
-                                        </a>
-                                    </div>
-                                </Card>
-                            </motion.div>
-                        ))}
+                                        <div className="flex justify-between items-center pt-6 border-t border-slate-100">
+                                            <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border ${getStatusClasses(doc.status)}`}>
+                                                {doc.status}
+                                            </span>
+                                            <a
+                                                href={doc.fileUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 font-black text-[10px] uppercase tracking-widest transition-colors"
+                                            >
+                                                View <Icon name="ArrowRight" size={12} />
+                                            </a>
+                                        </div>
+                                    </Card>
+                                </motion.div>
+                            ))}
                     </div>
                 )}
 
@@ -309,19 +333,22 @@ export default function PMDocumentsPage() {
                                 initial={{ scale: 0.95, opacity: 0 }}
                                 animate={{ scale: 1, opacity: 1 }}
                                 exit={{ scale: 0.95, opacity: 0 }}
-                                className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-xl shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto custom-scrollbar"
+                                className="bg-white rounded-3xl p-5 sm:p-8 w-full max-w-xl shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto custom-scrollbar"
                             >
-                                <div className="flex justify-between items-start mb-8">
+                                <div className="flex justify-between items-center mb-6">
                                     <div>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-purple-600 mb-1">Upload Center</p>
-                                        <h2 className="text-2xl font-black text-slate-800 tracking-tight">Add New Document</h2>
+                                        <h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">Upload Document</h2>
+                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Repository Submission</p>
                                     </div>
-                                    <button onClick={() => setShowUploadModal(false)} className="p-2 hover:bg-slate-50 rounded-xl transition-colors">
-                                        <Icon name="X" size={20} className="text-slate-400" />
+                                    <button
+                                        onClick={() => setShowUploadModal(false)}
+                                        className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400"
+                                    >
+                                        <Icon name="X" size={24} />
                                     </button>
                                 </div>
 
-                                <form onSubmit={handleUpload} className="space-y-8">
+                                <form onSubmit={handleUpload} className="space-y-6">
                                     {error && (
                                         <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 text-xs font-bold flex justify-between items-center">
                                             <span>{error}</span>
@@ -331,25 +358,22 @@ export default function PMDocumentsPage() {
 
                                     {/* Document Type Selection */}
                                     <div>
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 ml-1">Select Document Category</label>
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                            {DOCUMENT_TYPES.map(t => (
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">1. Select Document Type</label>
+                                        <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-3 gap-3">
+                                            {categories.map((cat) => (
                                                 <button
-                                                    key={t.value}
+                                                    key={cat.id}
                                                     type="button"
-                                                    onClick={() => setUploadData({ ...uploadData, type: t.value })}
-                                                    className={`p-4 rounded-2xl border-2 transition-all text-left flex flex-col gap-2 group ${uploadData.type === t.value
-                                                        ? 'border-purple-600 bg-purple-50'
-                                                        : 'border-slate-100 bg-slate-50 hover:bg-white hover:border-slate-200'
+                                                    onClick={() => setUploadData({ ...uploadData, type: cat.id })}
+                                                    className={`p-3 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 group ${uploadData.type === cat.id
+                                                        ? "border-indigo-600 bg-indigo-50 shadow-md shadow-indigo-500/10"
+                                                        : "border-slate-100 hover:border-indigo-200 hover:bg-slate-50"
                                                         }`}
                                                 >
-                                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${uploadData.type === t.value ? 'bg-purple-600 text-white' : 'bg-white text-slate-400 group-hover:bg-slate-100'}`}>
-                                                        <Icon name="File" size={16} />
+                                                    <div className={`p-2 rounded-xl transition-colors ${uploadData.type === cat.id ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500 group-hover:bg-indigo-100"}`}>
+                                                        <Icon name={cat.icon} size={20} />
                                                     </div>
-                                                    <div>
-                                                        <div className={`text-[10px] font-black uppercase tracking-wider ${uploadData.type === t.value ? 'text-purple-700' : 'text-slate-700'}`}>{t.label}</div>
-                                                        <div className="text-[8px] font-bold text-slate-400 uppercase leading-tight mt-1">{t.description}</div>
-                                                    </div>
+                                                    <span className={`text-[10px] sm:text-xs font-bold ${uploadData.type === cat.id ? "text-indigo-900" : "text-slate-600"}`}>{cat.label}</span>
                                                 </button>
                                             ))}
                                         </div>

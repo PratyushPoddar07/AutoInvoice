@@ -62,38 +62,38 @@ export default function AuditLogPage() {
     };
 
     return (
-        <div className="p-8 max-w-7xl mx-auto">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+        <div className="px-4 sm:px-8 py-6 sm:py-8 max-w-7xl mx-auto">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 px-1">
                 <div>
-                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600">
+                    <h1 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight uppercase">
                         Audit Logs
                     </h1>
-                    <p className="text-gray-500 mt-2">Complete system activity history (7-year retention)</p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Complete system activity history</p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
                     <button
                         onClick={fetchLogs}
-                        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 h-10 px-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-600 transition-all active:scale-95"
                     >
-                        <Icon name="RefreshCw" size={16} />
+                        <Icon name="RefreshCw" size={14} className={loading ? "animate-spin" : ""} />
                         Refresh
                     </button>
-                    <button className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl shadow-lg shadow-gray-900/20 hover:bg-gray-800 transition-all">
-                        <Icon name="Download" size={16} />
-                        Export CSV
+                    <button className="flex-1 sm:flex-none flex items-center justify-center gap-2 h-10 px-4 bg-slate-900 text-white rounded-xl shadow-lg shadow-slate-900/20 hover:bg-slate-800 text-[10px] font-black uppercase tracking-widest transition-all active:scale-95">
+                        <Icon name="Download" size={14} />
+                        Export
                     </button>
                 </div>
             </div>
 
             {/* Filters */}
-            <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/20 shadow-lg p-4 mb-6">
-                <div className="flex flex-col md:flex-row gap-4">
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/20 shadow-lg p-3 sm:p-4 mb-6">
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                     <div className="flex-1 relative">
-                        <Icon name="Search" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
                             type="text"
-                            placeholder="Search by user, action, or invoice..."
-                            className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            placeholder="Search user, action, or ID..."
+                            className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm rounded-xl border border-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white/50"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
@@ -101,7 +101,7 @@ export default function AuditLogPage() {
                     <select
                         value={filterAction}
                         onChange={(e) => setFilterAction(e.target.value)}
-                        className="px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white"
+                        className="px-4 py-2 text-xs sm:text-sm rounded-xl border border-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white/50 font-medium shrink-0"
                     >
                         <option value="ALL">All Actions</option>
                         <option value="UPDATE">Updates</option>
@@ -129,45 +129,49 @@ export default function AuditLogPage() {
                         <table className="w-full">
                             <thead>
                                 <tr className="border-b border-gray-100 bg-gray-50/50">
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Timestamp</th>
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">User</th>
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Details</th>
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice</th>
+                                    <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">Timestamp</th>
+                                    <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">User & Action</th>
+                                    <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 hidden lg:table-cell">Action Category</th>
+                                    <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 hidden sm:table-cell">Details</th>
+                                    <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">Target</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                                 {filteredLogs.map((log, idx) => (
                                     <tr key={log._id || idx} className="hover:bg-gray-50/50 transition-colors">
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                        <td className="px-6 py-4 whitespace-nowrap text-[10px] sm:text-xs text-slate-500 font-mono">
                                             {formatDate(log.timestamp)}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-100 to-gray-200 flex items-center justify-center text-gray-600 text-xs font-semibold">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-slate-100 to-slate-200 flex items-center justify-center text-slate-600 text-[10px] font-bold shrink-0">
                                                     {log.username?.charAt(0) || "S"}
                                                 </div>
-                                                <span className="text-sm font-medium text-gray-900">{log.username || "System"}</span>
+                                                <div className="min-w-0">
+                                                    <p className="text-[11px] sm:text-xs font-bold text-gray-900 truncate">{log.username || "System"}</p>
+                                                    <p className="lg:hidden text-[9px] font-black uppercase tracking-tighter text-indigo-600">{log.action}</p>
+                                                </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className={`px-3 py-1 rounded-full text-xs font-medium border ${actionColors[log.action] || "bg-gray-50 text-gray-600 border-gray-100"}`}>
+                                        <td className="px-6 py-4 whitespace-nowrap hidden lg:table-cell">
+                                            <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${actionColors[log.action] || "bg-gray-50 text-gray-600 border-gray-100"}`}>
                                                 {log.action}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-gray-600 max-w-md truncate">
+                                        <td className="px-6 py-4 text-[11px] text-gray-600 max-w-xs truncate hidden sm:table-cell">
                                             {log.details}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             {log.invoice_id ? (
                                                 <Link
                                                     href={`/digitization/${log.invoice_id}`}
-                                                    className="text-primary text-sm font-medium hover:underline"
+                                                    className="flex items-center gap-1.5 text-indigo-600 text-[10px] font-bold hover:underline"
                                                 >
-                                                    {log.invoice_id.substring(0, 12)}...
+                                                    <Icon name="ExternalLink" size={10} />
+                                                    {log.invoice_id.substring(0, 8)}
                                                 </Link>
                                             ) : (
-                                                <span className="text-gray-400 text-sm">—</span>
+                                                <span className="text-slate-300 text-[10px] font-black tracking-widest">GLOBAL</span>
                                             )}
                                         </td>
                                     </tr>

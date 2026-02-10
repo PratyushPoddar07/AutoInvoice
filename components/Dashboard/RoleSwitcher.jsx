@@ -13,8 +13,8 @@ const RoleSwitcher = () => {
     // Allow PMs to switch to Finance roles if needed (optional logic)
 
     return (
-        <div className="hidden xl:flex items-center gap-1 p-1 bg-slate-100/80 rounded-xl border border-slate-200/60">
-            {Object.values(ROLES).map((role) => (
+        <div className="flex items-center gap-1 p-1 bg-slate-100/80 rounded-xl border border-slate-200/60">
+            {[ROLES.ADMIN].map((role) => (
                 <button
                     key={role}
                     onClick={() => switchRole && switchRole(role)}
@@ -22,14 +22,10 @@ const RoleSwitcher = () => {
                         ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20 scale-105"
                         : "text-slate-400 hover:text-indigo-600 hover:bg-white"
                         }`}
-                    title={`Switch view to ${role}`}
+                    title={`Role: ${role}`}
                 >
                     <Icon
-                        name={
-                            role === ROLES.ADMIN ? "Shield" :
-                                role === ROLES.PROJECT_MANAGER ? "Briefcase" :
-                                    role === ROLES.VENDOR ? "Store" : "DollarSign"
-                        }
+                        name="Shield"
                         size={12}
                     />
                     {role.replace('_', ' ')}

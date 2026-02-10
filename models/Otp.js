@@ -17,8 +17,7 @@ const OtpSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
-// Ensure index exists for expiration
-OtpSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+// TTL index is handled inline in the schema definition above for expiresAt
 
 // Force model recompilation in dev to pick up schema changes
 if (process.env.NODE_ENV !== 'production' && mongoose.models.Otp) {
