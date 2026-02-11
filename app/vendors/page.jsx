@@ -43,24 +43,10 @@ function VendorPortalContent() {
         }
     }, []);
 
-    // Project & PM Selection State — Project optional; PM list = all signed-up project managers
-    const [projects, setProjects] = useState([]);
+    // PM Selection State — PM list = all signed-up project managers
     const [pms, setPms] = useState([]);
-    const [selectedProject, setSelectedProject] = useState("");
     const [selectedPM, setSelectedPM] = useState("");
     const [vendorProfile, setVendorProfile] = useState(null); // { vendorCode, name } for display
-
-    const fetchProjects = useCallback(async () => {
-        try {
-            const res = await fetch('/api/vendor/projects');
-            if (res.ok) {
-                const data = await res.json();
-                setProjects(Array.isArray(data) ? data : []);
-            }
-        } catch (error) {
-            console.error("Failed to fetch projects", error);
-        }
-    }, []);
 
     const fetchAllPms = useCallback(async () => {
         try {
@@ -88,11 +74,10 @@ function VendorPortalContent() {
 
     useEffect(() => {
         if (user) {
-            fetchProjects();
             fetchAllPms();
             if (user.role === "Vendor") fetchVendorProfile();
         }
-    }, [user, fetchProjects, fetchAllPms, fetchVendorProfile]);
+    }, [user, fetchAllPms, fetchVendorProfile]);
 
     const searchParams = useSearchParams();
 
@@ -542,7 +527,6 @@ function VendorPortalContent() {
                                     const toastId = toast.loading("Uploading invoice...");
                                     try {
                                         const metadata = {
-                                            ...(selectedProject && { projectId: selectedProject }),
                                             assignedPM: selectedPM,
                                             invoiceNumber: formData.get('invoiceNumber'),
                                             date: formData.get('date'),
@@ -559,34 +543,19 @@ function VendorPortalContent() {
                                     } finally { setLoading(false); }
                                 }} className="space-y-6">
                                     <div className="space-y-5">
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Project Assignment</label>
-                                                <select
-                                                    className="w-full h-12 px-4 rounded-2xl border border-slate-200 bg-white text-xs font-bold text-slate-700 focus:ring-4 focus:ring-teal-500/10 focus:border-teal-500 outline-none transition-all appearance-none cursor-pointer"
-                                                    value={selectedProject}
-                                                    onChange={(e) => setSelectedProject(e.target.value)}
-                                                >
-                                                    <option value="">Direct Submission</option>
-                                                    {projects.map(p => (
-                                                        <option key={p.id} value={p.id}>{p.name}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Assigned PM</label>
-                                                <select
-                                                    className="w-full h-12 px-4 rounded-2xl border border-slate-200 bg-white text-xs font-bold text-slate-700 focus:ring-4 focus:ring-teal-500/10 focus:border-teal-500 outline-none transition-all appearance-none cursor-pointer"
-                                                    value={selectedPM}
-                                                    onChange={(e) => setSelectedPM(e.target.value)}
-                                                    required
-                                                >
-                                                    <option value="">Select PM</option>
-                                                    {pms.map(pm => (
-                                                        <option key={pm.id} value={pm.id}>{pm.name}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Assigned PM</label>
+                                            <select
+                                                className="w-full h-12 px-4 rounded-2xl border border-slate-200 bg-white text-xs font-bold text-slate-700 focus:ring-4 focus:ring-teal-500/10 focus:border-teal-500 outline-none transition-all appearance-none cursor-pointer"
+                                                value={selectedPM}
+                                                onChange={(e) => setSelectedPM(e.target.value)}
+                                                required
+                                            >
+                                                <option value="">Select PM</option>
+                                                {pms.map(pm => (
+                                                    <option key={pm.id} value={pm.id}>{pm.name}</option>
+                                                ))}
+                                            </select>
                                         </div>
 
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
