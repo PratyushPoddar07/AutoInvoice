@@ -7,8 +7,6 @@ import axios from "axios";
 
 export default function ConfigurationPage() {
     const [settings, setSettings] = useState({
-        systemName: "InvoiceFlow",
-        maintenanceMode: false,
         emailNotifications: true,
         autoBackup: true,
         sapIntegration: true,
@@ -20,11 +18,8 @@ export default function ConfigurationPage() {
         auditRetentionYears: 7
     });
     const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
     const [testing, setTesting] = useState({});
     const [testResults, setTestResults] = useState({});
-    const [backfillVendorIdsLoading, setBackfillVendorIdsLoading] = useState(false);
-
     useEffect(() => {
         fetchConfig();
     }, []);
@@ -48,19 +43,6 @@ export default function ConfigurationPage() {
 
     const handleToggle = (key) => {
         setSettings(prev => ({ ...prev, [key]: !prev[key] }));
-    };
-
-    const handleSave = async () => {
-        try {
-            setSaving(true);
-            await axios.put("/api/config", settings);
-            toast.success("Configuration saved successfully");
-        } catch (error) {
-            console.error("Failed to save configuration", error);
-            toast.error(error.response?.data?.error || "Failed to save configuration");
-        } finally {
-            setSaving(false);
-        }
     };
 
     const handleTestConnection = async (integration) => {
@@ -100,21 +82,6 @@ export default function ConfigurationPage() {
         }
     };
 
-    const handleBackfillVendorIds = async () => {
-        try {
-            setBackfillVendorIdsLoading(true);
-            const res = await axios.post("/api/admin/backfill-vendor-ids");
-            toast.success(res.data.message || "Vendor IDs assigned.");
-            if (res.data.details?.created?.length) {
-                toast.info(`${res.data.created} new vendor record(s) created and linked.`);
-            }
-        } catch (error) {
-            toast.error(error.response?.data?.error || "Failed to run backfill");
-        } finally {
-            setBackfillVendorIdsLoading(false);
-        }
-    };
-
     return (
         <div className="p-8 max-w-5xl mx-auto space-y-8">
             <div className="flex justify-between items-center mb-8">
@@ -125,17 +92,6 @@ export default function ConfigurationPage() {
                     <p className="text-gray-500 mt-2">Application settings, integrations, and system preferences</p>
                 </div>
             </div>
-            <div className="flex justify-end mb-8">
-                <button
-                    onClick={handleSave}
-                    disabled={saving || loading}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl shadow-lg shadow-primary/20 hover:bg-primary-hover transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    <Icon name={saving ? "Loader" : "Save"} size={18} className={saving ? "animate-spin" : ""} />
-                    {saving ? "Saving..." : "Save Changes"}
-                </button>
-            </div>
-
             {/* General Settings */}
             <section className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white/20 shadow-xl p-8">
                 <div className="flex items-center gap-4 mb-6">
@@ -146,32 +102,6 @@ export default function ConfigurationPage() {
                 </div>
 
                 <div className="space-y-5">
-                    <div className="flex items-center justify-between p-4 bg-gray-50/50 rounded-2xl">
-                        <div>
-                            <h3 className="font-semibold text-gray-900">System Name</h3>
-                            <p className="text-sm text-gray-500">Display name for the application</p>
-                        </div>
-                        <input
-                            type="text"
-                            value={settings.systemName}
-                            onChange={(e) => setSettings({ ...settings, systemName: e.target.value })}
-                            className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 w-40 text-center focus:outline-none focus:ring-2 focus:ring-primary/20"
-                        />
-                    </div>
-
-                    <div className="flex items-center justify-between p-4 bg-gray-50/50 rounded-2xl">
-                        <div>
-                            <h3 className="font-semibold text-gray-900">Maintenance Mode</h3>
-                            <p className="text-sm text-gray-500">Disable access for non-admin users</p>
-                        </div>
-                        <button
-                            onClick={() => handleToggle('maintenanceMode')}
-                            className={`w-12 h-6 rounded-full transition-colors relative ${settings.maintenanceMode ? 'bg-primary' : 'bg-gray-300'}`}
-                        >
-                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform shadow ${settings.maintenanceMode ? 'left-7' : 'left-1'}`} />
-                        </button>
-                    </div>
-
                     <div className="flex items-center justify-between p-4 bg-gray-50/50 rounded-2xl">
                         <div>
                             <h3 className="font-semibold text-gray-900">Email Notifications</h3>
@@ -185,25 +115,6 @@ export default function ConfigurationPage() {
                         </button>
                     </div>
                 </div>
-            </section>
-
-            {/* Vendor IDs — assign vendor ID to existing vendor users */}
-            <section className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white/20 shadow-xl p-8">
-                <div className="flex items-center gap-4 mb-6">
-                    <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
-                        <Icon name="Users" size={24} />
-                    </div>
-                    <h2 className="text-xl font-bold text-gray-900">Vendor IDs</h2>
-                </div>
-                <p className="text-sm text-gray-500 mb-4">Vendors are uniquely identified by a vendor ID (e.g. ve-001). Run this to assign a vendor ID to any existing user who signed up as Vendor but does not have one yet.</p>
-                <button
-                    onClick={handleBackfillVendorIds}
-                    disabled={backfillVendorIdsLoading}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center gap-2"
-                >
-                    {backfillVendorIdsLoading ? <Icon name="Loader" size={18} className="animate-spin" /> : <Icon name="UserPlus" size={18} />}
-                    {backfillVendorIdsLoading ? "Running…" : "Assign vendor IDs to existing vendors"}
-                </button>
             </section>
 
             {/* Matching & OCR Settings */}

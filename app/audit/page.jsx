@@ -102,6 +102,99 @@ export default function AuditLogPage() {
         });
     };
 
+    const escapeCSV = (value) => {
+        if (value === null || value === undefined) {
+            return "";
+        }
+        const stringValue = String(value);
+        // If value contains comma, newline, or quote, wrap in quotes and escape quotes
+        if (stringValue.includes(',') || stringValue.includes('\n') || stringValue.includes('"')) {
+            return `"${stringValue.replace(/"/g, '""')}"`;
+        }
+        return stringValue;
+    };
+
+    const getUserType = (username) => {
+        if (!username || username === "System") return "System";
+        // You can customize this logic based on your actual user type detection
+        // For now, we'll derive from username pattern or additional props
+        // This is a placeholder - adjust based on your actual user management system
+        return "Admin"; // Default, you might want to get this from the log object
+    };
+
+    const handleExport = async () => {
+        // Check if there are logs to export
+        if (filteredLogs.length === 0) {
+            toast.error("No audit logs available to export");
+            return;
+        }
+
+        try {
+            setExporting(true);
+
+            // Generate CSV content
+            const headers = ["Timestamp", "User Name", "User Type", "Action Category", "Action Type", "Details / Description"];
+            
+            const csvRows = [
+                // Add header row
+                headers.map(escapeCSV).join(","),
+                // Add data rows
+                ...filteredLogs.map(log => {
+                    const timestamp = formatDate(log.timestamp);
+                    const userName = log.username || "System";
+                    const userType = log.user_type || getUserType(log.username);
+                    const actionCategory = log.action || "N/A";
+                    const actionType = log.action_type || log.action || "N/A";
+                    const details = log.details || "N/A";
+
+                    return [
+                        escapeCSV(timestamp),
+                        escapeCSV(userName),
+                        escapeCSV(userType),
+                        escapeCSV(actionCategory),
+                        escapeCSV(actionType),
+                        escapeCSV(details)
+                    ].join(",");
+                })
+            ];
+
+            const csvContent = csvRows.join("\n");
+
+            // Create file with UTF-8 BOM for Excel compatibility
+            const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+            const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+
+            // Generate filename with timestamp
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hour = String(now.getHours()).padStart(2, '0');
+            const minute = String(now.getMinutes()).padStart(2, '0');
+            const filename = `audit_logs_${year}-${month}-${day}_${hour}-${minute}.csv`;
+
+            // Create download link and trigger download
+            const link = document.createElement('a');
+            if (link.download !== undefined) {
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', filename);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }
+
+            toast.success(`Exported ${filteredLogs.length} audit logs successfully`);
+        } catch (error) {
+            console.error("Export error:", error);
+            toast.error("Failed to export audit logs");
+        } finally {
+            setExporting(false);
+        }
+    };
+
     return (
         <div className="px-4 sm:px-8 py-6 sm:py-8 max-w-7xl mx-auto">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 px-1">
