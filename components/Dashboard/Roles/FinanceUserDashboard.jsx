@@ -78,9 +78,6 @@ const FinanceUserDashboard = ({ invoices, onUploadComplete }) => {
                             <div>
                                 <h3 className="font-bold text-lg text-slate-800">Recent Invoice Activity</h3>
                             </div>
-                            <button onClick={() => router.push('/digitization')} className="text-xs font-bold text-primary hover:underline">
-                                View All History
-                            </button>
                         </div>
                         <div className="overflow-x-auto">
                             <table className="table w-full">
@@ -90,7 +87,6 @@ const FinanceUserDashboard = ({ invoices, onUploadComplete }) => {
                                         <th className="font-semibold py-4">Amount</th>
                                         <th className="font-semibold py-4">Date</th>
                                         <th className="font-semibold py-4">Status</th>
-                                        <th className="font-semibold py-4 pr-6 text-right">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody className="text-sm">
@@ -126,16 +122,11 @@ const FinanceUserDashboard = ({ invoices, onUploadComplete }) => {
                                                         {inv.status.replace('_', ' ')}
                                                     </span>
                                                 </td>
-                                                <td className="text-right pr-6">
-                                                    <button className="btn btn-ghost btn-xs text-slate-400 hover:text-success hover:bg-success/5">
-                                                        <Icon name="ArrowRight" size={14} />
-                                                    </button>
-                                                </td>
                                             </tr>
                                         ))
                                     ) : (
                                         <tr>
-                                            <td colSpan="5" className="text-center py-10 text-slate-400 italic">
+                                            <td colSpan="4" className="text-center py-10 text-slate-400 italic">
                                                 No recent activity found. Upload an invoice to get started.
                                             </td>
                                         </tr>

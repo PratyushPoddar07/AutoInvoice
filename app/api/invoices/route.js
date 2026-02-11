@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { getCurrentUser } from '@/lib/server-auth';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { getNormalizedRole, ROLES } from '@/constants/roles';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,6 +34,7 @@ export async function POST(request) {
         const project = formData.get('project');
         const status = formData.get('status') || 'manually_submitted';
         const submittedByUserId = formData.get('submittedByUserId');
+        const assignedPM = formData.get('assignedPM');
         const document = formData.get('document');
 
         // Validation
@@ -138,6 +140,7 @@ export async function POST(request) {
             description,
             poNumber,
             project,
+            assignedPM,
             status,
             fileUrl,
             originalName,
@@ -203,6 +206,12 @@ export async function GET(request) {
 
         const limit = searchParams.get('limit');
         if (limit) filters.limit = limit;
+
+        // If user is a Project Manager, only return invoices assigned to them
+        const userRole = getNormalizedRole(user);
+        if (userRole === ROLES.PROJECT_MANAGER) {
+            filters.assignedPM = user.id;
+        }
 
         const invoices = await db.getInvoices(user, filters, { includeFiles: false });
         const sorted = invoices.sort((a, b) =>

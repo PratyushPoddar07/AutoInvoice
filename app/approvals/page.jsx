@@ -57,7 +57,7 @@ export default function ApprovalsPage() {
     <div className="space-y-8 max-w-7xl mx-auto h-full pb-10">
       <PageHeader
         title="Admin Approval Workflow"
-        subtitle="Pending invoices requiring managerial review and final sign-off. Vendor submissions appear here for review."
+        subtitle="Review and sign-off on pending invoices"
         icon="Stamp"
         accent="amber"
       />

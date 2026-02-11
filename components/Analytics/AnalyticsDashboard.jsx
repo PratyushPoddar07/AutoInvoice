@@ -13,16 +13,32 @@ import { useRouter } from "next/navigation";
 
 const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6'];
 
+const formatCurrency = (value) => {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR'
+  }).format(value);
+};
+
+const parseAmount = (amount) => {
+  if (!amount) return 0;
+  return Number(String(amount).replace(/[^\d.-]/g, '')) || 0;
+};
+
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
       <div className="bg-white/90 backdrop-blur-md border border-white/50 p-4 rounded-xl shadow-xl">
         <p className="font-bold text-gray-800 mb-1">{label}</p>
-        {payload.map((entry, index) => (
-          <p key={index} style={{ color: entry.color }} className="text-sm font-medium">
-            {entry.name}: {entry.value}
-          </p>
-        ))}
+        {payload.map((entry, index) => {
+          const isCurrency = entry.name === 'Total Spend';
+          const formattedValue = isCurrency ? formatCurrency(entry.value) : entry.value;
+          return (
+            <p key={index} style={{ color: entry.color }} className="text-sm font-medium">
+              {entry.name}: {formattedValue}
+            </p>
+          );
+        })}
       </div>
     );
   }
@@ -57,7 +73,11 @@ const AnalyticsDashboard = () => {
 
   const statusData = useMemo(() => {
     const counts = invoices.reduce((acc, inv) => {
-      acc[inv.status] = (acc[inv.status] || 0) + 1;
+      // Filter for empty or invalid statuses
+      const status = inv.status;
+      if (status && status.trim() !== '' && status !== 'Invalid' && status !== 'undefined' && status !== 'null') {
+        acc[status] = (acc[status] || 0) + 1;
+      }
       return acc;
     }, {});
 
@@ -69,29 +89,41 @@ const AnalyticsDashboard = () => {
 
   const monthlySpendingData = useMemo(() => {
     const monthlyMap = invoices.reduce((acc, inv) => {
-      // Assuming inv.date is YYYY-MM-DD
-      const date = new Date(inv.date);
-      const monthYear = date.toLocaleString('default', { month: 'short', year: '2-digit' });
+      // Robust date extraction helper that checks inv.date, inv.receivedAt, and inv.created_at
+      let dateStr = inv.date || inv.receivedAt || inv.created_at;
+      if (!dateStr) return acc;
 
-      acc[monthYear] = (acc[monthYear] || 0) + Number(inv.amount);
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return acc;
+
+      // Use a sortable key (YYYY-MM) for grouping and sorting months
+      const sortableKey = date.toISOString().slice(0, 7); // YYYY-MM
+      // Standardize labels to MMM YY (e.g., Jan 24)
+      const displayLabel = date.toLocaleString('default', { month: 'short', year: '2-digit' });
+
+      const amount = parseAmount(inv.amount);
+
+      if (!acc[sortableKey]) {
+        acc[sortableKey] = { sortableKey, month: displayLabel, amount: 0 };
+      }
+      acc[sortableKey].amount += amount;
+
       return acc;
     }, {});
 
-    return Object.keys(monthlyMap).map(key => ({
-      month: key,
-      amount: monthlyMap[key]
-    })).sort((a, b) => new Date(a.month) - new Date(b.month));
+    return Object.values(monthlyMap).sort((a, b) => a.sortableKey.localeCompare(b.sortableKey));
   }, [invoices]);
 
   const vendorPerformance = useMemo(() => {
     const vendorMap = invoices.reduce((acc, inv) => {
-      if (!acc[inv.vendorName]) {
-        acc[inv.vendorName] = { name: inv.vendorName, total: 0, count: 0, discrepancies: 0 };
+      const vName = inv.vendorName || 'Pending Identification';
+      if (!acc[vName]) {
+        acc[vName] = { name: vName, total: 0, count: 0, discrepancies: 0 };
       }
-      acc[inv.vendorName].total += Number(inv.amount);
-      acc[inv.vendorName].count += 1;
+      acc[vName].total += parseAmount(inv.amount);
+      acc[vName].count += 1;
       if (inv.status === 'MATCH_DISCREPANCY') {
-        acc[inv.vendorName].discrepancies += 1;
+        acc[vName].discrepancies += 1;
       }
       return acc;
     }, {});
@@ -113,7 +145,7 @@ const AnalyticsDashboard = () => {
   ];
 
   const kpis = useMemo(() => {
-    const totalSpend = invoices.reduce((sum, inv) => sum + (Number(inv.amount) || 0), 0);
+    const totalSpend = invoices.reduce((sum, inv) => sum + parseAmount(inv.amount), 0);
 
     return {
       totalSpend,
@@ -157,7 +189,7 @@ const AnalyticsDashboard = () => {
       </Card>
 
       {/* KPI Cards Row */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="flex flex-col justify-between" hoverEffect>
           <div className="flex justify-between items-start">
             <div>
@@ -178,40 +210,6 @@ const AnalyticsDashboard = () => {
         <Card className="flex flex-col justify-between" hoverEffect>
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-gray-500 text-sm font-medium">OCR Accuracy</p>
-              <h3 className="text-2xl font-bold text-gray-800 mt-2">
-                {kpis.ocrAccuracy}%
-              </h3>
-            </div>
-            <div className="p-3 bg-purple-500/10 rounded-xl text-purple-600">
-              <Icon name="Scan" size={24} />
-            </div>
-          </div>
-          <div className="mt-4 flex items-center text-xs font-bold text-gray-500">
-            Confidence Score
-          </div>
-        </Card>
-
-        <Card className="flex flex-col justify-between" hoverEffect>
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-gray-500 text-sm font-medium">Cycle Time</p>
-              <h3 className="text-2xl font-bold text-gray-800 mt-2">
-                {kpis.avgCycleTime}h
-              </h3>
-            </div>
-            <div className="p-3 bg-blue-500/10 rounded-xl text-blue-600">
-              <Icon name="Clock" size={24} />
-            </div>
-          </div>
-          <div className="mt-4 flex items-center text-xs font-bold text-success bg-success/10 w-fit px-2 py-1 rounded">
-            Rapid Processing
-          </div>
-        </Card>
-
-        <Card className="flex flex-col justify-between" hoverEffect>
-          <div className="flex justify-between items-start">
-            <div>
               <p className="text-gray-500 text-sm font-medium">Active Pipeline</p>
               <h3 className="text-2xl font-bold text-gray-800 mt-2">
                 {kpis.activeInvoices}
@@ -222,23 +220,23 @@ const AnalyticsDashboard = () => {
             </div>
           </div>
           <div className="mt-4 flex items-center text-xs font-bold text-warning bg-warning/10 w-fit px-2 py-1 rounded">
-            In Review
+            <Icon name="AlertCircle" size={12} className="mr-1" /> In Review
           </div>
         </Card>
       </div>
 
       {/* Main Charts Area */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[500px] lg:h-[400px]">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {/* Monthly Spending Bar Chart */}
-        <Card className="flex flex-col h-full col-span-1" noPadding>
+        <Card className="col-span-1" noPadding>
           <div className="p-6 pb-0 mb-4">
             <h3 className="text-lg font-bold text-gray-800">Monthly Spending Analysis</h3>
             <p className="text-sm text-gray-500">Aggregated invoice totals by month</p>
           </div>
-          <div className="flex-1 w-full h-full pr-6 pb-2 min-h-0">
+          <div className="w-full h-[300px] pr-6 pb-4">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlySpendingData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <BarChart data={monthlySpendingData} margin={{ top: 10, right: 10, left: 20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                 <XAxis
                   dataKey="month"
@@ -251,7 +249,14 @@ const AnalyticsDashboard = () => {
                   axisLine={false}
                   tickLine={false}
                   tick={{ fill: '#6B7280', fontSize: 12 }}
-                  tickFormatter={(value) => `$${value}`}
+                  tickFormatter={(value) => {
+                    return new Intl.NumberFormat('en-IN', {
+                      style: 'currency',
+                      currency: 'INR',
+                      notation: 'compact',
+                      compactDisplay: 'short'
+                    }).format(value);
+                  }}
                 />
                 <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(79, 70, 229, 0.1)' }} />
                 <Bar
@@ -267,12 +272,12 @@ const AnalyticsDashboard = () => {
         </Card>
 
         {/* Status Distribution Pie Chart */}
-        <Card className="flex flex-col h-full col-span-1" noPadding>
+        <Card className="col-span-1" noPadding>
           <div className="p-6 pb-0 mb-2">
             <h3 className="text-lg font-bold text-gray-800">Invoice Status Distribution</h3>
             <p className="text-sm text-gray-500">Current workflow breakdown</p>
           </div>
-          <div className="flex-1 w-full h-full flex items-center justify-center min-h-0 relative">
+          <div className="w-full h-[300px] relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie

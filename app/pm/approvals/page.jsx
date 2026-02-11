@@ -93,7 +93,7 @@ export default function PMApprovalsPage() {
         <div className="pb-10">
             <PageHeader
                 title="Invoice Approvals"
-                subtitle="Review and approve invoices for your assigned projects"
+                subtitle="Review and approve project invoices"
                 icon="CheckCircle"
                 accent="indigo"
             />
@@ -185,11 +185,11 @@ export default function PMApprovalsPage() {
                                                 <span
                                                     className={`inline-flex px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border
                                                     ${invoice.pmApproval.status === 'APPROVED'
-                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                                                        : invoice.pmApproval.status === 'REJECTED'
-                                                            ? 'bg-rose-50 text-rose-700 border-rose-100'
-                                                            : 'bg-amber-50 text-amber-600 border-amber-100'
-                                                    }`}
+                                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                                            : invoice.pmApproval.status === 'REJECTED'
+                                                                ? 'bg-rose-50 text-rose-700 border-rose-100'
+                                                                : 'bg-amber-50 text-amber-600 border-amber-100'
+                                                        }`}
                                                 >
                                                     {invoice.pmApproval.status.replace(/_/g, ' ')}
                                                 </span>
