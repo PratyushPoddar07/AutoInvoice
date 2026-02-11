@@ -12,6 +12,7 @@ export default function AuditLogPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [filterAction, setFilterAction] = useState("ALL");
     const [currentPage, setCurrentPage] = useState(1);
+    const [exporting, setExporting] = useState(false);
     const itemsPerPage = 20;
 
     useEffect(() => {
@@ -50,35 +51,6 @@ export default function AuditLogPage() {
 
     const handlePageChange = (newPage) => {
         setCurrentPage(newPage);
-    };
-
-    const handleExport = () => {
-        if (filteredLogs.length === 0) {
-            toast.error("No data to export");
-            return;
-        }
-
-        const headers = ["Timestamp", "User", "Action", "Details", "Invoice ID"];
-        const csvContent = [
-            headers.join(","),
-            ...filteredLogs.map(log => [
-                new Date(log.timestamp).toISOString(),
-                log.username || "System",
-                log.action,
-                `"${(log.details || "").replace(/"/g, '""')}"`,
-                log.invoice_id || ""
-            ].join(","))
-        ].join("\n");
-
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", `audit_request_${new Date().toISOString().split('T')[0]}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
     };
 
     const actionColors = {
