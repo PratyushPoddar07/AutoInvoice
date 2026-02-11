@@ -11,6 +11,7 @@ export default function AuditLogPage() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
     const [filterAction, setFilterAction] = useState("ALL");
+    const [exporting, setExporting] = useState(false);
 
     useEffect(() => {
         fetchLogs();
@@ -61,6 +62,99 @@ export default function AuditLogPage() {
         });
     };
 
+    const escapeCSV = (value) => {
+        if (value === null || value === undefined) {
+            return "";
+        }
+        const stringValue = String(value);
+        // If value contains comma, newline, or quote, wrap in quotes and escape quotes
+        if (stringValue.includes(',') || stringValue.includes('\n') || stringValue.includes('"')) {
+            return `"${stringValue.replace(/"/g, '""')}"`;
+        }
+        return stringValue;
+    };
+
+    const getUserType = (username) => {
+        if (!username || username === "System") return "System";
+        // You can customize this logic based on your actual user type detection
+        // For now, we'll derive from username pattern or additional props
+        // This is a placeholder - adjust based on your actual user management system
+        return "Admin"; // Default, you might want to get this from the log object
+    };
+
+    const handleExport = async () => {
+        // Check if there are logs to export
+        if (filteredLogs.length === 0) {
+            toast.error("No audit logs available to export");
+            return;
+        }
+
+        try {
+            setExporting(true);
+
+            // Generate CSV content
+            const headers = ["Timestamp", "User Name", "User Type", "Action Category", "Action Type", "Details / Description"];
+            
+            const csvRows = [
+                // Add header row
+                headers.map(escapeCSV).join(","),
+                // Add data rows
+                ...filteredLogs.map(log => {
+                    const timestamp = formatDate(log.timestamp);
+                    const userName = log.username || "System";
+                    const userType = log.user_type || getUserType(log.username);
+                    const actionCategory = log.action || "N/A";
+                    const actionType = log.action_type || log.action || "N/A";
+                    const details = log.details || "N/A";
+
+                    return [
+                        escapeCSV(timestamp),
+                        escapeCSV(userName),
+                        escapeCSV(userType),
+                        escapeCSV(actionCategory),
+                        escapeCSV(actionType),
+                        escapeCSV(details)
+                    ].join(",");
+                })
+            ];
+
+            const csvContent = csvRows.join("\n");
+
+            // Create file with UTF-8 BOM for Excel compatibility
+            const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+            const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+
+            // Generate filename with timestamp
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hour = String(now.getHours()).padStart(2, '0');
+            const minute = String(now.getMinutes()).padStart(2, '0');
+            const filename = `audit_logs_${year}-${month}-${day}_${hour}-${minute}.csv`;
+
+            // Create download link and trigger download
+            const link = document.createElement('a');
+            if (link.download !== undefined) {
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', filename);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }
+
+            toast.success(`Exported ${filteredLogs.length} audit logs successfully`);
+        } catch (error) {
+            console.error("Export error:", error);
+            toast.error("Failed to export audit logs");
+        } finally {
+            setExporting(false);
+        }
+    };
+
     return (
         <div className="px-4 sm:px-8 py-6 sm:py-8 max-w-7xl mx-auto">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 px-1">
@@ -78,9 +172,13 @@ export default function AuditLogPage() {
                         <Icon name="RefreshCw" size={14} className={loading ? "animate-spin" : ""} />
                         Refresh
                     </button>
-                    <button className="flex-1 sm:flex-none flex items-center justify-center gap-2 h-10 px-4 bg-slate-900 text-white rounded-xl shadow-lg shadow-slate-900/20 hover:bg-slate-800 text-[10px] font-black uppercase tracking-widest transition-all active:scale-95">
-                        <Icon name="Download" size={14} />
-                        Export
+                    <button
+                        onClick={handleExport}
+                        disabled={exporting || loading || filteredLogs.length === 0}
+                        className={`flex-1 sm:flex-none flex items-center justify-center gap-2 h-10 px-4 bg-slate-900 text-white rounded-xl shadow-lg shadow-slate-900/20 hover:bg-slate-800 text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${(exporting || loading || filteredLogs.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                        <Icon name="Download" size={14} className={exporting ? "animate-pulse" : ""} />
+                        {exporting ? "Exporting..." : "Export"}
                     </button>
                 </div>
             </div>
@@ -133,7 +231,6 @@ export default function AuditLogPage() {
                                     <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">User & Action</th>
                                     <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 hidden lg:table-cell">Action Category</th>
                                     <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 hidden sm:table-cell">Details</th>
-                                    <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">Target</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -160,19 +257,6 @@ export default function AuditLogPage() {
                                         </td>
                                         <td className="px-6 py-4 text-[11px] text-gray-600 max-w-xs truncate hidden sm:table-cell">
                                             {log.details}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            {log.invoice_id ? (
-                                                <Link
-                                                    href={`/digitization/${log.invoice_id}`}
-                                                    className="flex items-center gap-1.5 text-indigo-600 text-[10px] font-bold hover:underline"
-                                                >
-                                                    <Icon name="ExternalLink" size={10} />
-                                                    {log.invoice_id.substring(0, 8)}
-                                                </Link>
-                                            ) : (
-                                                <span className="text-slate-300 text-[10px] font-black tracking-widest">GLOBAL</span>
-                                            )}
                                         </td>
                                     </tr>
                                 ))}

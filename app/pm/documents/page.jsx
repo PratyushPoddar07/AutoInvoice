@@ -6,6 +6,18 @@ import PageHeader from '@/components/Layout/PageHeader';
 import Card from '@/components/ui/Card';
 import Icon from '@/components/Icon';
 
+/**
+ * Format month from YYYY-MM or YYYY-MM to display format (e.g., "Feb 2026")
+ */
+const formatBillingMonth = (monthValue) => {
+    if (!monthValue) return monthValue;
+    const [year, month] = monthValue.split('-');
+    if (!year || !month) return monthValue;
+    
+    const monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${monthNames[parseInt(month)]} ${year}`;
+};
+
 const DOCUMENT_TYPES = [
     { value: 'RINGI', label: 'Ringi', description: 'PDF format', color: 'purple' },
     { value: 'ANNEX', label: 'Annex', description: 'PDF, Word, or Excel', color: 'blue' },
@@ -20,9 +32,12 @@ export default function PMDocumentsPage() {
     const [success, setSuccess] = useState(null);
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [uploadingAttachment, setUploadingAttachment] = useState(false);
     const [filterType, setFilterType] = useState('');
     const [filterProject, setFilterProject] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
+    const [viewerDocumentId, setViewerDocumentId] = useState(null);
+    const [viewerLoading, setViewerLoading] = useState(true);
     const fileInputRef = useRef(null);
 
     const [uploadData, setUploadData] = useState({
@@ -81,9 +96,24 @@ export default function PMDocumentsPage() {
         if (!uploadData.file || !uploadData.type) return;
 
         try {
+            // Start upload process
+            setUploadingAttachment(true);
             setUploading(true);
             setError(null);
             setValidationResult(null);
+
+            // Validate file size (max 10MB)
+            const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB in bytes
+            if (uploadData.file.size > MAX_FILE_SIZE) {
+                throw new Error(`File size exceeds maximum limit of 10MB. Please upload a smaller file.`);
+            }
+
+            // Validate file extension
+            const allowedExtensions = ['pdf', 'xlsx', 'xls', 'doc', 'docx'];
+            const fileExtension = uploadData.file.name.split('.').pop().toLowerCase();
+            if (!allowedExtensions.includes(fileExtension)) {
+                throw new Error(`Invalid file type. Allowed formats: PDF, Excel (.xlsx, .xls), or Word (.doc, .docx).`);
+            }
 
             const formData = new FormData();
             formData.append('file', uploadData.file);
@@ -99,7 +129,17 @@ export default function PMDocumentsPage() {
                 body: formData
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error);
+            
+            if (!res.ok) {
+                // Handle specific error messages from backend
+                if (data.details) {
+                    throw new Error(data.details);
+                } else if (data.error) {
+                    throw new Error(data.error);
+                } else {
+                    throw new Error('Failed to upload document. Please try again or contact support.');
+                }
+            }
 
             // Show validation result
             if (data.validation) {
@@ -107,8 +147,10 @@ export default function PMDocumentsPage() {
             }
 
             setSuccess(data.validation?.isValid
-                ? 'Document uploaded and validated successfully!'
-                : 'Document uploaded - pending review');
+                ? `Document "${uploadData.file.name}" uploaded and validated successfully!`
+                : `Document "${uploadData.file.name}" uploaded - pending review`);
+            
+            // Close modal and reset form
             setShowUploadModal(false);
             setUploadData({
                 file: null,
@@ -122,8 +164,10 @@ export default function PMDocumentsPage() {
             if (fileInputRef.current) fileInputRef.current.value = '';
             fetchDocuments();
         } catch (err) {
-            setError(err.message);
+            console.error('Upload error:', err);
+            setError(err.message || 'Failed to upload document. Please try again.');
         } finally {
+            setUploadingAttachment(false);
             setUploading(false);
         }
     };
@@ -143,6 +187,12 @@ export default function PMDocumentsPage() {
             case 'REJECTED': return 'bg-rose-50 text-rose-600 border-rose-100';
             default: return 'bg-amber-50 text-amber-600 border-amber-100';
         }
+    };
+
+    const handleViewDocument = (e, id) => {
+        e.stopPropagation();
+        setViewerDocumentId(id);
+        setViewerLoading(true);
     };
 
     const categories = [
@@ -283,7 +333,7 @@ export default function PMDocumentsPage() {
                                             {doc.metadata?.billingMonth && (
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Month</span>
-                                                    <span className="text-xs font-bold text-slate-700">{doc.metadata.billingMonth}</span>
+                                                    <span className="text-xs font-bold text-slate-700">{formatBillingMonth(doc.metadata.billingMonth)}</span>
                                                 </div>
                                             )}
                                             {doc.metadata?.ringiNumber && (
@@ -302,10 +352,14 @@ export default function PMDocumentsPage() {
                                                 href={doc.fileUrl}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 font-black text-[10px] uppercase tracking-widest transition-colors"
+                                                className="hidden"
+                                            />
+                                            <button
+                                                onClick={(e) => handleViewDocument(e, doc.id)}
+                                                className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 font-black text-[10px] uppercase tracking-widest transition-colors bg-transparent border-0 p-0 cursor-pointer"
                                             >
-                                                View <Icon name="ArrowRight" size={12} />
-                                            </a>
+                                                View <Icon name="Eye" size={12} />
+                                            </button>
                                         </div>
                                     </Card>
                                 </motion.div>
@@ -381,23 +435,74 @@ export default function PMDocumentsPage() {
 
                                     {/* File Input Area */}
                                     <div className="relative">
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">Attachment</label>
-                                        <div className="group relative border-2 border-dashed border-slate-200 rounded-2xl p-8 transition-all hover:bg-slate-50 hover:border-purple-300 flex flex-col items-center justify-center gap-3 cursor-pointer">
-                                            <input
-                                                ref={fileInputRef}
-                                                type="file"
-                                                onChange={handleFileChange}
-                                                accept=".pdf,.xlsx,.xls,.doc,.docx"
-                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                            />
-                                            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-purple-100 group-hover:text-purple-600 transition-colors">
-                                                <Icon name="Upload" size={24} />
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">2. Attachment</label>
+                                        
+                                        {/* Upload loading state */}
+                                        {uploadingAttachment ? (
+                                            <div className="relative border-2 border-dashed border-purple-400 bg-purple-50/50 rounded-2xl p-8 transition-all flex flex-col items-center justify-center gap-3">
+                                                <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 animate-pulse">
+                                                    <Icon name="Upload" size={24} />
+                                                </div>
+                                                <div className="text-center">
+                                                    <p className="text-sm font-bold text-purple-700">Uploading file...</p>
+                                                    <p className="text-[10px] font-bold text-purple-400 uppercase tracking-widest mt-1">Please wait</p>
+                                                </div>
                                             </div>
-                                            <div className="text-center">
-                                                <p className="text-sm font-bold text-slate-700">{uploadData.file ? uploadData.file.name : 'Click or drop to upload'}</p>
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">PDF, Excel, or Word (Max 10MB)</p>
+                                        ) : uploadData.file ? (
+                                            /* File selected state */
+                                            <div className="relative border-2 border-dashed border-emerald-300 bg-emerald-50/50 rounded-2xl p-4 transition-all">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
+                                                        <Icon name="FileText" size={20} />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-bold text-slate-700 truncate" title={uploadData.file.name}>
+                                                            {uploadData.file.name}
+                                                        </p>
+                                                        <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-widest mt-0.5">
+                                                            {(uploadData.file.size / 1024).toFixed(1)} KB
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setUploadData({ ...uploadData, file: null });
+                                                            if (fileInputRef.current) fileInputRef.current.value = '';
+                                                        }}
+                                                        className="p-2 hover:bg-rose-100 rounded-xl text-rose-500 transition-colors shrink-0"
+                                                        title="Remove file"
+                                                    >
+                                                        <Icon name="Trash2" size={16} />
+                                                    </button>
+                                                </div>
+                                                <input
+                                                    ref={fileInputRef}
+                                                    type="file"
+                                                    onChange={handleFileChange}
+                                                    accept=".pdf,.xlsx,.xls,.doc,.docx"
+                                                    className="hidden"
+                                                />
                                             </div>
-                                        </div>
+                                        ) : (
+                                            /* No file selected state */
+                                            <div className="group relative border-2 border-dashed border-slate-200 rounded-2xl p-8 transition-all hover:bg-slate-50 hover:border-purple-300 flex flex-col items-center justify-center gap-3 cursor-pointer">
+                                                <input
+                                                    ref={fileInputRef}
+                                                    type="file"
+                                                    onChange={handleFileChange}
+                                                    accept=".pdf,.xlsx,.xls,.doc,.docx"
+                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                />
+                                                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-purple-100 group-hover:text-purple-600 transition-colors">
+                                                    <Icon name="Upload" size={24} />
+                                                </div>
+                                                <div className="text-center">
+                                                    <p className="text-sm font-bold text-slate-700">Click or drop to upload</p>
+                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">PDF, Excel, or Word (Max 10MB)</p>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Project & Details Grid */}
@@ -418,12 +523,19 @@ export default function PMDocumentsPage() {
                                         </div>
                                         <div>
                                             <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">Billing cycle (Month)</label>
-                                            <input
-                                                type="month"
-                                                value={uploadData.billingMonth}
-                                                onChange={(e) => setUploadData({ ...uploadData, billingMonth: e.target.value })}
-                                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 focus:outline-none focus:ring-4 focus:ring-purple-500/10 focus:border-purple-500 transition-all font-bold text-sm"
-                                            />
+                                            <div className="relative">
+                                                <input
+                                                    type="month"
+                                                    value={uploadData.billingMonth}
+                                                    onChange={(e) => setUploadData({ ...uploadData, billingMonth: e.target.value })}
+                                                    className={`w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-purple-500/10 focus:border-purple-500 transition-all font-bold text-sm ${!uploadData.billingMonth ? 'text-transparent' : 'text-slate-700'}`}
+                                                />
+                                                {!uploadData.billingMonth && (
+                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold pointer-events-none select-none">
+                                                        MM-YYYY
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
 
@@ -464,6 +576,111 @@ export default function PMDocumentsPage() {
                                         </button>
                                     </div>
                                 </form>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
+
+                {/* Document viewer modal - matching vendor page implementation */}
+                <AnimatePresence>
+                    {viewerDocumentId && (
+                        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
+                                onClick={() => setViewerDocumentId(null)}
+                            />
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                className="relative bg-white w-full max-w-5xl rounded-3xl sm:rounded-[3rem] shadow-2xl overflow-hidden z-[151] flex flex-col max-h-[90vh] border border-white"
+                            >
+                                <div className="flex flex-col sm:flex-row items-center justify-between px-6 sm:px-8 py-5 sm:py-6 border-b border-slate-100 bg-slate-50/50 gap-4">
+                                    <div className="flex items-center gap-4 w-full sm:w-auto">
+                                        <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-200 shrink-0">
+                                            <Icon name="FileText" size={20} />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <h3 className="font-black text-slate-800 text-sm truncate max-w-[200px] sm:max-w-md">
+                                                {documents.find((doc) => doc.id === viewerDocumentId)?.fileName || `Document ${viewerDocumentId}`}
+                                            </h3>
+                                            {documents.find((doc) => doc.id === viewerDocumentId)?.metadata?.billingMonth && (
+                                                <p className="text-[11px] font-bold text-indigo-600 mt-0.5">
+                                                    Billing Cycle: {formatBillingMonth(documents.find((doc) => doc.id === viewerDocumentId).metadata.billingMonth)}
+                                                </p>
+                                            )}
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Secure Document Access</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end sm:justify-start">
+                                        <a
+                                            href={documents.find((doc) => doc.id === viewerDocumentId)?.source === 'invoice'
+                                                ? `/api/invoices/${viewerDocumentId}/file`
+                                                : `/api/documents/${viewerDocumentId}/file`}
+                                            download
+                                            className="h-9 sm:h-10 px-3 sm:px-4 flex items-center gap-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
+                                        >
+                                            <Icon name="Download" size={14} /> <span className="hidden xs:inline">Download</span>
+                                        </a>
+                                        <button
+                                            type="button"
+                                            onClick={() => setViewerDocumentId(null)}
+                                            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl hover:bg-slate-200 flex items-center justify-center text-slate-400 transition-colors bg-slate-100"
+                                        >
+                                            <Icon name="X" size={18} />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex-1 bg-slate-100 relative min-h-[60vh]">
+                                    {viewerLoading && (
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 z-10">
+                                            <span className="loading loading-spinner loading-lg text-indigo-600 mb-4" />
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Retrieving Document...</p>
+                                        </div>
+                                    )}
+                                    {(() => {
+                                        const doc = documents.find(d => d.id === viewerDocumentId);
+                                        const fileName = doc?.fileName?.toLowerCase() || "";
+                                        const isOfficeDoc = fileName.endsWith('.doc') || fileName.endsWith('.docx') || fileName.endsWith('.xls') || fileName.endsWith('.xlsx');
+                                        const docUrl = doc?.source === 'invoice' ? `/api/invoices/${viewerDocumentId}/file` : `/api/documents/${viewerDocumentId}/file`;
+
+                                        if (isOfficeDoc) {
+                                            return (
+                                                <div className="flex flex-col items-center justify-center h-full p-20 text-center space-y-6">
+                                                    <div className="w-24 h-24 rounded-[2.5rem] bg-amber-50 text-amber-600 flex items-center justify-center shadow-inner">
+                                                        <Icon name="AlertCircle" size={48} />
+                                                    </div>
+                                                    <div className="max-w-md">
+                                                        <h4 className="text-xl font-black text-slate-800 uppercase tracking-tight">Preview Unavailable</h4>
+                                                        <p className="text-sm font-medium text-slate-500 mt-2 leading-relaxed">
+                                                            Office documents (.doc, .xls) cannot be rendered directly in the browser. Please download the file to view its contents.
+                                                        </p>
+                                                    </div>
+                                                    <a
+                                                        href={docUrl}
+                                                        download
+                                                        className="inline-flex items-center gap-3 h-14 px-8 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-indigo-200 transition-all active:scale-95"
+                                                        onLoad={() => setViewerLoading(false)}
+                                                    >
+                                                        <Icon name="Download" size={20} /> Download for Viewing
+                                                    </a>
+                                                </div>
+                                            );
+                                        }
+
+                                        return (
+                                            <iframe
+                                                src={docUrl}
+                                                title="Document preview"
+                                                className="w-full h-full min-h-[60vh] border-0"
+                                                onLoad={() => setViewerLoading(false)}
+                                            />
+                                        );
+                                    })()}
+                                </div>
                             </motion.div>
                         </div>
                     )}
