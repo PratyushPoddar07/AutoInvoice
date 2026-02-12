@@ -6,7 +6,7 @@ import { sendStatusNotification } from '@/lib/notifications';
 import { ROLES } from '@/constants/roles';
 
 /**
- * POST /api/finance/approve/:id - Final invoice approval (Finance User only)
+ * POST /api/admin/approve/:id - Final system approval (Admin only)
  */
 export async function POST(request, { params }) {
     try {
@@ -15,14 +15,14 @@ export async function POST(request, { params }) {
             return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
         }
 
-        const roleCheck = requireRole([ROLES.FINANCE_USER, ROLES.ADMIN])(session.user);
+        const roleCheck = requireRole([ROLES.ADMIN])(session.user);
         if (!roleCheck.allowed) {
             return NextResponse.json({ error: roleCheck.reason }, { status: 403 });
         }
 
         const { id } = await params;
         const body = await request.json();
-        const { action, notes, assignedPM } = body;
+        const { action, notes } = body;
 
         if (!action || !['APPROVE', 'REJECT'].includes(action)) {
             return NextResponse.json(
@@ -36,38 +36,45 @@ export async function POST(request, { params }) {
             return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
         }
 
-        // Update finance approval
-        const financeApproval = {
+        // Check if PM approval is complete
+        if (invoice.pmApproval?.status !== 'APPROVED') {
+            return NextResponse.json(
+                { error: 'PM approval required before final admin approval' },
+                { status: 400 }
+            );
+        }
+
+        // Update admin approval
+        const adminApproval = {
             status: action === 'APPROVE' ? 'APPROVED' : 'REJECTED',
             approvedBy: session.user.id,
             approvedAt: new Date().toISOString(),
             notes: notes || null
         };
 
-        // Update overall status based on approval
-        const newStatus = action === 'APPROVE' ? 'Pending PM Approval' : 'Rejected';
+        // Update overall status to final "Approved" or "Rejected"
+        const newStatus = action === 'APPROVE' ? 'Approved' : 'Rejected';
 
         const updatedInvoice = await db.saveInvoice(id, {
-            financeApproval,
+            adminApproval,
             status: newStatus,
-            assignedPM: assignedPM || invoice.assignedPM,
             auditUsername: session.user.name || session.user.email,
-            auditAction: `FINANCE_${action}`,
-            auditDetails: `Finance ${action.toLowerCase()}ed invoice${notes ? `: ${notes}` : ''}`
+            auditAction: `ADMIN_${action}`,
+            auditDetails: `Admin ${action.toLowerCase()}ed invoice${notes ? `: ${notes}` : ''}`
         });
 
         const notificationType = action === 'APPROVE' ? 'PAID' : 'REJECTED';
         await sendStatusNotification(updatedInvoice, notificationType).catch((err) =>
-            console.error('[Finance Approve] Notification failed:', err)
+            console.error('[Admin Approve] Notification failed:', err)
         );
 
         return NextResponse.json({
             success: true,
-            message: `Invoice ${action.toLowerCase()}ed`,
+            message: `Invoice ${action.toLowerCase()}ed by Admin`,
             newStatus
         });
     } catch (error) {
-        console.error('Error processing finance approval:', error);
+        console.error('Error processing admin approval:', error);
         return NextResponse.json({ error: 'Failed to process approval' }, { status: 500 });
     }
 }

@@ -65,6 +65,7 @@ export async function POST(request) {
             // Manual Entry Fields
             project: formData.get('projectId'),
             assignedPM: formData.get('assignedPM'),
+            assignedFinanceUser: formData.get('assignedFinanceUser'),
             invoiceNumber: formData.get('invoiceNumber'), // Manual override
             date: formData.get('date'), // Manual override
             amount: formData.get('amount') ? parseFloat(formData.get('amount')) : undefined, // Manual override

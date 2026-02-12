@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import Icon from "@/components/Icon";
 import { getAllInvoices } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import DocumentViewer from "@/components/ui/DocumentViewer";
 import clsx from "clsx";
 import PageHeader from "@/components/Layout/PageHeader";
 
@@ -45,8 +46,22 @@ function VendorPortalContent() {
 
     // PM Selection State — PM list = all signed-up project managers
     const [pms, setPms] = useState([]);
+    const [financeUsers, setFinanceUsers] = useState([]);
     const [selectedPM, setSelectedPM] = useState("");
+    const [selectedFinanceUser, setSelectedFinanceUser] = useState("");
     const [vendorProfile, setVendorProfile] = useState(null); // { vendorCode, name } for display
+
+    const fetchFinanceUsers = useCallback(async () => {
+        try {
+            const res = await fetch('/api/finance-users');
+            if (res.ok) {
+                const data = await res.json();
+                setFinanceUsers(data.financeUsers || []);
+            }
+        } catch (error) {
+            console.error("Failed to fetch Finance Users", error);
+        }
+    }, []);
 
     const fetchAllPms = useCallback(async () => {
         try {
@@ -75,9 +90,10 @@ function VendorPortalContent() {
     useEffect(() => {
         if (user) {
             fetchAllPms();
+            fetchFinanceUsers();
             if (user.role === "Vendor") fetchVendorProfile();
         }
-    }, [user, fetchAllPms, fetchVendorProfile]);
+    }, [user, fetchAllPms, fetchFinanceUsers, fetchVendorProfile]);
 
     const searchParams = useSearchParams();
 
@@ -91,7 +107,7 @@ function VendorPortalContent() {
         const poll = async () => {
             await fetchSubmissions();
             // Schedule next poll only after current one finishes
-            timeoutId = setTimeout(poll, 15000); // 15 seconds
+            timeoutId = setTimeout(poll, 8000); // 8 seconds
         };
 
         poll();
@@ -322,7 +338,7 @@ function VendorPortalContent() {
                             <thead>
                                 <tr className="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em] border-b border-slate-100 bg-slate-50/30">
                                     <th className="px-10 py-6">Invoice Reference</th>
-                                    <th className="px-6 py-6">Milestone</th>
+                                    <th className="px-6 py-6">Approval Status</th>
                                     <th className="px-6 py-6">Financial Value</th>
                                     <th className="px-10 py-6 text-right">Vault Access</th>
                                 </tr>
@@ -339,59 +355,99 @@ function VendorPortalContent() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    allSubmissions.slice(0, 30).map((inv, idx) => (
-                                        <motion.tr
-                                            key={inv.id}
-                                            initial={{ opacity: 0, x: -10 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            transition={{ delay: idx * 0.03 }}
-                                            className="group hover:bg-slate-50/50 transition-all duration-300 cursor-pointer"
-                                            onClick={(e) => handleViewDocument(e, inv.id)}
-                                        >
-                                            <td className="px-10 py-6">
-                                                <div className="flex items-center gap-5">
-                                                    <div className="w-14 h-14 rounded-[1.25rem] bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 shadow-sm border border-indigo-100 group-hover:bg-indigo-600 group-hover:text-white group-hover:rotate-6 transition-all duration-500">
-                                                        <Icon name="FileText" size={24} />
-                                                    </div>
-                                                    <div className="min-w-0">
-                                                        <p className="font-black text-slate-800 text-base truncate max-w-[300px]" title={inv.originalName}>
-                                                            {inv.originalName || "DOCUMENT_ID_" + inv.id.slice(-6)}
-                                                        </p>
-                                                        <div className="flex items-center gap-3 mt-1.5">
-                                                            <span className="text-[10px] text-indigo-600 font-mono font-black bg-indigo-50/50 px-2 py-0.5 rounded-md border border-indigo-100/50">{inv.invoiceNumber || inv.id.slice(0, 8)}</span>
-                                                            <span className="text-slate-300 text-[10px] font-black opacity-30">//</span>
-                                                            <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{inv.date || new Date(inv.receivedAt).toLocaleDateString()}</span>
+                                    allSubmissions.slice(0, 30).map((inv, idx) => {
+                                        // Approval logic: Vendor -> Finance -> PM
+                                        const financeStatus = inv.financeApproval?.status;
+                                        const pmStatus = inv.pmApproval?.status;
+
+                                        let financeDisplay = { label: 'Waiting', color: 'orange', icon: 'Clock' };
+                                        let pmDisplay = { label: 'Waiting', color: 'orange', icon: 'Clock' };
+
+                                        // Finance Step Logic
+                                        if (financeStatus === 'APPROVED' || pmStatus === 'APPROVED') {
+                                            financeDisplay = { label: 'Approved', color: 'emerald', icon: 'CheckCircle2' };
+                                        } else if (financeStatus === 'REJECTED') {
+                                            financeDisplay = { label: 'Rejected', color: 'rose', icon: 'XCircle' };
+                                        }
+
+                                        // PM Step Logic
+                                        if (pmStatus === 'APPROVED') {
+                                            pmDisplay = { label: 'Approved', color: 'emerald', icon: 'CheckCircle2' };
+                                        } else if (pmStatus === 'REJECTED' || financeStatus === 'REJECTED') {
+                                            pmDisplay = { label: 'Rejected', color: 'rose', icon: 'XCircle' };
+                                        }
+
+                                        const getStepStyle = (cfg) => {
+                                            if (cfg.color === 'emerald') return 'bg-emerald-50 text-emerald-600 border-emerald-100';
+                                            if (cfg.color === 'rose') return 'bg-rose-50 text-rose-600 border-rose-100';
+                                            return 'bg-amber-50 text-amber-600 border-amber-100';
+                                        };
+
+                                        return (
+                                            <motion.tr
+                                                key={inv.id}
+                                                initial={{ opacity: 0, x: -10 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                transition={{ delay: idx * 0.03 }}
+                                                className="group hover:bg-slate-50/50 transition-all duration-300 cursor-pointer"
+                                                onClick={(e) => handleViewDocument(e, inv.id)}
+                                            >
+                                                <td className="px-10 py-6">
+                                                    <div className="flex items-center gap-5">
+                                                        <div className="w-14 h-14 rounded-[1.25rem] bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 shadow-sm border border-indigo-100 group-hover:bg-indigo-600 group-hover:text-white group-hover:rotate-6 transition-all duration-500">
+                                                            <Icon name="FileText" size={24} />
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className="font-black text-slate-800 text-base truncate max-w-[300px]" title={inv.originalName}>
+                                                                {inv.originalName || "DOCUMENT_ID_" + inv.id.slice(-6)}
+                                                            </p>
+                                                            <div className="flex items-center gap-3 mt-1.5">
+                                                                <span className="text-[10px] text-indigo-600 font-mono font-black bg-indigo-50/50 px-2 py-0.5 rounded-md border border-indigo-100/50">{inv.invoiceNumber || inv.id.slice(0, 8)}</span>
+                                                                <span className="text-slate-300 text-[10px] font-black opacity-30">//</span>
+                                                                <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{inv.date || new Date(inv.receivedAt).toLocaleDateString()}</span>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-6">
-                                                <span className={clsx(
-                                                    "px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] border-2 shadow-sm inline-flex items-center gap-2.5 transition-all",
-                                                    getStatusStyle(inv.status)
-                                                )}>
-                                                    <div className={clsx("w-2 h-2 rounded-full", inv.status === "DIGITIZING" || inv.status === "RECEIVED" ? "bg-amber-500 animate-pulse" : "bg-current")} />
-                                                    {inv.status.replace("_", " ")}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-6">
-                                                <div className="space-y-1">
-                                                    <p className="text-lg font-black text-slate-800 tracking-tight">
-                                                        {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(inv.amount || 0)}
-                                                    </p>
-                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest opacity-60">Gross Valuation</p>
-                                                </div>
-                                            </td>
-                                            <td className="px-10 py-6 text-right">
-                                                <button
-                                                    onClick={(e) => handleViewDocument(e, inv.id)}
-                                                    className="w-12 h-12 inline-flex items-center justify-center text-slate-300 group-hover:text-teal-600 bg-white group-hover:bg-teal-50 border border-slate-100 group-hover:border-teal-200 rounded-[1rem] shadow-sm transition-all duration-300 hover:scale-110 active:scale-90"
-                                                >
-                                                    <Icon name="Eye" size={20} />
-                                                </button>
-                                            </td>
-                                        </motion.tr>
-                                    ))
+                                                </td>
+                                                <td className="px-6 py-6">
+                                                    <div className="flex flex-col gap-2">
+                                                        {/* Finance Step */}
+                                                        <div className={clsx(
+                                                            "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider w-fit transition-all",
+                                                            getStepStyle(financeDisplay)
+                                                        )}>
+                                                            <Icon name={financeDisplay.icon} size={14} className={financeDisplay.label === 'Waiting' ? 'animate-pulse' : ''} />
+                                                            Finance: {financeDisplay.label}
+                                                        </div>
+                                                        {/* PM Step */}
+                                                        <div className={clsx(
+                                                            "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider w-fit transition-all",
+                                                            getStepStyle(pmDisplay)
+                                                        )}>
+                                                            <Icon name={pmDisplay.icon} size={14} className={pmDisplay.label === 'Waiting' && financeDisplay.label === 'Approved' ? 'animate-pulse' : ''} />
+                                                            Project Mgr: {pmDisplay.label}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-6">
+                                                    <div className="space-y-1">
+                                                        <p className="text-lg font-black text-slate-800 tracking-tight">
+                                                            {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(inv.amount || 0)}
+                                                        </p>
+                                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest opacity-60">Gross Valuation</p>
+                                                    </div>
+                                                </td>
+                                                <td className="px-10 py-6 text-right">
+                                                    <button
+                                                        onClick={(e) => handleViewDocument(e, inv.id)}
+                                                        className="w-12 h-12 inline-flex items-center justify-center text-slate-300 group-hover:text-teal-600 bg-white group-hover:bg-teal-50 border border-slate-100 group-hover:border-teal-200 rounded-[1rem] shadow-sm transition-all duration-300 hover:scale-110 active:scale-90"
+                                                    >
+                                                        <Icon name="Eye" size={20} />
+                                                    </button>
+                                                </td>
+                                            </motion.tr>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>
@@ -406,49 +462,95 @@ function VendorPortalContent() {
                                     <p className="text-lg font-black text-slate-300 uppercase tracking-widest">Vault Empty</p>
                                 </div>
                             ) : (
-                                allSubmissions.slice(0, 30).map((inv, idx) => (
-                                    <motion.div
-                                        key={inv.id}
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ delay: idx * 0.05 }}
-                                        className="p-6 active:bg-slate-50 transition-colors cursor-pointer"
-                                        onClick={(e) => handleViewDocument(e, inv.id)}
-                                    >
-                                        <div className="flex items-start justify-between gap-4">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100">
-                                                    <Icon name="FileText" size={20} />
+                                allSubmissions.slice(0, 30).map((inv, idx) => {
+                                    // Same logic for mobile
+                                    const financeStatus = inv.financeApproval?.status;
+                                    const pmStatus = inv.pmApproval?.status;
+
+                                    let financeDisplay = { label: 'Waiting', color: 'orange', icon: 'Clock' };
+                                    let pmDisplay = { label: 'Waiting', color: 'orange', icon: 'Clock' };
+
+                                    if (financeStatus === 'APPROVED' || pmStatus === 'APPROVED') {
+                                        financeDisplay = { label: 'Approved', color: 'emerald', icon: 'CheckCircle2' };
+                                    } else if (financeStatus === 'REJECTED') {
+                                        financeDisplay = { label: 'Rejected', color: 'rose', icon: 'XCircle' };
+                                    }
+
+                                    if (pmStatus === 'APPROVED') {
+                                        pmDisplay = { label: 'Approved', color: 'emerald', icon: 'CheckCircle2' };
+                                    } else if (pmStatus === 'REJECTED' || financeStatus === 'REJECTED') {
+                                        pmDisplay = { label: 'Rejected', color: 'rose', icon: 'XCircle' };
+                                    }
+
+                                    const getStepStyle = (cfg) => {
+                                        if (cfg.color === 'emerald') return 'bg-emerald-50 text-emerald-600 border-emerald-100';
+                                        if (cfg.color === 'rose') return 'bg-rose-50 text-rose-600 border-rose-100';
+                                        return 'bg-amber-50 text-amber-600 border-amber-100';
+                                    };
+
+                                    return (
+                                        <motion.div
+                                            key={inv.id}
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            transition={{ delay: idx * 0.05 }}
+                                            className="p-6 active:bg-slate-50 transition-colors cursor-pointer"
+                                            onClick={(e) => handleViewDocument(e, inv.id)}
+                                        >
+                                            <div className="flex items-start justify-between gap-4">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100">
+                                                        <Icon name="FileText" size={20} />
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className="font-black text-slate-800 text-sm truncate max-w-[180px]">
+                                                            {inv.originalName || "INV_" + inv.id.slice(-6)}
+                                                        </p>
+                                                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-0.5">
+                                                            {inv.invoiceNumber || inv.id.slice(0, 8)} • {inv.date || new Date(inv.receivedAt).toLocaleDateString()}
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                                <div className="min-w-0">
-                                                    <p className="font-black text-slate-800 text-sm truncate max-w-[180px]">
-                                                        {inv.originalName || "INV_" + inv.id.slice(-6)}
-                                                    </p>
-                                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-0.5">
-                                                        {inv.invoiceNumber || inv.id.slice(0, 8)} • {inv.date || new Date(inv.receivedAt).toLocaleDateString()}
+                                                <button className="w-10 h-10 rounded-xl bg-slate-50 text-slate-300 flex items-center justify-center shrink-0">
+                                                    <Icon name="Eye" size={18} />
+                                                </button>
+                                            </div>
+
+                                            {/* Approval Pipeline */}
+                                            <div className="mt-5 grid grid-cols-2 gap-3">
+                                                <div className={clsx(
+                                                    "flex items-center gap-2 p-2 rounded-xl border text-[9px] font-black uppercase tracking-wider",
+                                                    getStepStyle(financeDisplay)
+                                                )}>
+                                                    <Icon name={financeDisplay.icon} size={12} />
+                                                    FINANCE: {financeDisplay.label}
+                                                </div>
+                                                <div className={clsx(
+                                                    "flex items-center gap-2 p-2 rounded-xl border text-[9px] font-black uppercase tracking-wider",
+                                                    getStepStyle(pmDisplay)
+                                                )}>
+                                                    <Icon name={pmDisplay.icon} size={12} />
+                                                    PM: {pmDisplay.label}
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-4 flex items-center justify-between gap-4">
+                                                <span className={clsx(
+                                                    "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider border shadow-sm inline-flex items-center gap-2",
+                                                    getStatusStyle(inv.status)
+                                                )}>
+                                                    <div className={clsx("w-1.5 h-1.5 rounded-full", inv.status === "DIGITIZING" || inv.status === "RECEIVED" ? "bg-amber-500 animate-pulse" : "bg-current")} />
+                                                    {inv.status.replace("_", " ")}
+                                                </span>
+                                                <div className="text-right">
+                                                    <p className="text-base font-black text-slate-800">
+                                                        {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(inv.amount || 0)}
                                                     </p>
                                                 </div>
                                             </div>
-                                            <button className="w-10 h-10 rounded-xl bg-slate-50 text-slate-300 flex items-center justify-center shrink-0">
-                                                <Icon name="Eye" size={18} />
-                                            </button>
-                                        </div>
-                                        <div className="mt-5 flex items-center justify-between gap-4">
-                                            <span className={clsx(
-                                                "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider border shadow-sm inline-flex items-center gap-2",
-                                                getStatusStyle(inv.status)
-                                            )}>
-                                                <div className={clsx("w-1.5 h-1.5 rounded-full", inv.status === "DIGITIZING" || inv.status === "RECEIVED" ? "bg-amber-500 animate-pulse" : "bg-current")} />
-                                                {inv.status.replace("_", " ")}
-                                            </span>
-                                            <div className="text-right">
-                                                <p className="text-base font-black text-slate-800">
-                                                    {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(inv.amount || 0)}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </motion.div>
-                                ))
+                                        </motion.div>
+                                    );
+                                })
                             )}
                         </div>
                     </div>
@@ -492,7 +594,7 @@ function VendorPortalContent() {
                                     </div>
                                     <div className="flex items-start gap-4">
                                         <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0 font-black text-xs">2</div>
-                                        <p className="text-xs font-bold leading-relaxed opacity-90">Assigned to PM Verification</p>
+                                        <p className="text-xs font-bold leading-relaxed opacity-90">Internal Finance Review</p>
                                     </div>
                                     <div className="flex items-start gap-4">
                                         <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0 font-black text-xs">3</div>
@@ -517,7 +619,6 @@ function VendorPortalContent() {
 
                                 <form onSubmit={async (e) => {
                                     e.preventDefault();
-                                    if (!selectedPM) { toast.error("Please select a PM."); return; }
                                     const form = e.target;
                                     const formData = new FormData(form);
                                     const file = formData.get('file');
@@ -527,7 +628,8 @@ function VendorPortalContent() {
                                     const toastId = toast.loading("Uploading invoice...");
                                     try {
                                         const metadata = {
-                                            assignedPM: selectedPM,
+                                            assignedPM: '',
+                                            assignedFinanceUser: selectedFinanceUser,
                                             invoiceNumber: formData.get('invoiceNumber'),
                                             date: formData.get('date'),
                                             amount: formData.get('amount'),
@@ -544,19 +646,20 @@ function VendorPortalContent() {
                                 }} className="space-y-6">
                                     <div className="space-y-5">
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Assigned PM</label>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Assign to Finance User <span className="text-rose-500">*</span></label>
                                             <select
                                                 className="w-full h-12 px-4 rounded-2xl border border-slate-200 bg-white text-xs font-bold text-slate-700 focus:ring-4 focus:ring-teal-500/10 focus:border-teal-500 outline-none transition-all appearance-none cursor-pointer"
-                                                value={selectedPM}
-                                                onChange={(e) => setSelectedPM(e.target.value)}
+                                                value={selectedFinanceUser}
+                                                onChange={(e) => setSelectedFinanceUser(e.target.value)}
                                                 required
                                             >
-                                                <option value="">Select PM</option>
-                                                {pms.map(pm => (
-                                                    <option key={pm.id} value={pm.id}>{pm.name}</option>
+                                                <option value="">Select Finance User</option>
+                                                {financeUsers.map(fu => (
+                                                    <option key={fu.id} value={fu.id}>{fu.name}</option>
                                                 ))}
                                             </select>
                                         </div>
+                                        {/* PM Assignment removed - Invoices route to Finance by default */}
 
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                                             <div className="space-y-2">
@@ -686,7 +789,7 @@ function VendorPortalContent() {
                                     </button>
                                 </div>
                             </div>
-                            <div className="flex-1 bg-slate-100 relative min-h-[60vh]">
+                            <div className="flex-1 bg-slate-100 relative min-h-[60vh] max-h-[80vh] overflow-y-auto">
                                 {viewerLoading && (
                                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 z-10">
                                         <span className="loading loading-spinner loading-lg text-teal-600 mb-4" />
@@ -697,75 +800,12 @@ function VendorPortalContent() {
                                     const inv = allSubmissions.find(i => i.id === viewerInvoiceId);
                                     if (!inv) return null;
 
-                                    const fileName = inv.originalName?.toLowerCase() || "";
-                                    const isSpreadsheet = fileName.endsWith('.xls') || fileName.endsWith('.xlsx') || fileName.endsWith('.csv');
-                                    const isDoc = fileName.endsWith('.doc') || fileName.endsWith('.docx');
-
-                                    if (Array.isArray(spreadsheetData) && isSpreadsheet) {
-                                        return (
-                                            <div className="absolute inset-0 bg-white overflow-auto p-4 sm:p-6">
-                                                <div className="min-w-max border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white">
-                                                    <table className="w-full text-left border-collapse text-[10px] sm:text-[11px]">
-                                                        <thead>
-                                                            <tr className="bg-slate-50 border-b border-slate-200">
-                                                                {spreadsheetData[0]?.map((cell, i) => (
-                                                                    <th key={i} className="px-4 py-3 font-black text-slate-500 uppercase tracking-widest border-r border-slate-200 last:border-0">
-                                                                        {cell || `Col ${i + 1}`}
-                                                                    </th>
-                                                                ))}
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-slate-100">
-                                                            {spreadsheetData.slice(1).map((row, i) => (
-                                                                <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                                                                    {row.map((cell, j) => (
-                                                                        <td key={j} className="px-4 py-2 text-slate-600 border-r border-slate-100 last:border-0 whitespace-nowrap">
-                                                                            {cell}
-                                                                        </td>
-                                                                    ))}
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                                {spreadsheetData.length >= 100 && (
-                                                    <p className="mt-4 text-[10px] text-center text-slate-400 font-bold uppercase tracking-widest">
-                                                        Showing first 100 rows
-                                                    </p>
-                                                )}
-                                            </div>
-                                        );
-                                    }
-
-                                    if (isDoc || (isSpreadsheet && !spreadsheetData)) {
-                                        return (
-                                            <div className="flex flex-col items-center justify-center h-full p-20 text-center space-y-6">
-                                                <div className="w-24 h-24 rounded-[2.5rem] bg-amber-50 text-amber-600 flex items-center justify-center shadow-inner">
-                                                    <Icon name="AlertCircle" size={48} />
-                                                </div>
-                                                <div className="max-w-md">
-                                                    <h4 className="text-xl font-black text-slate-800 uppercase tracking-tight">Preview Unavailable</h4>
-                                                    <p className="text-sm font-medium text-slate-500 mt-2 leading-relaxed">
-                                                        Office documents (.doc, .xls, .csv) cannot be rendered directly in the browser vault. Please download the file to view its contents.
-                                                    </p>
-                                                </div>
-                                                <a
-                                                    href={`/api/invoices/${viewerInvoiceId}/file`}
-                                                    download
-                                                    className="inline-flex items-center gap-3 h-14 px-8 bg-teal-600 hover:bg-teal-700 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-teal-200 transition-all active:scale-95"
-                                                >
-                                                    <Icon name="Download" size={20} /> Download for Viewing
-                                                </a>
-                                            </div>
-                                        );
-                                    }
-
                                     return (
-                                        <iframe
-                                            src={`/api/invoices/${viewerInvoiceId}/file`}
-                                            title="Invoice document"
-                                            className="w-full h-full min-h-[60vh] border-0"
-                                            onLoad={() => setViewerLoading(false)}
+                                        <DocumentViewer
+                                            invoiceId={viewerInvoiceId}
+                                            fileName={inv.originalName}
+                                            spreadsheetData={spreadsheetData}
+                                            onLoadingComplete={() => setViewerLoading(false)}
                                         />
                                     );
                                 })()}

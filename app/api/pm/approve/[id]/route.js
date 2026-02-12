@@ -41,6 +41,14 @@ export async function POST(request, { params }) {
             return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
         }
 
+        // Check Finance approval first (Step: FM -> PM)
+        if (invoice.financeApproval?.status !== 'APPROVED') {
+            return NextResponse.json(
+                { error: 'Finance approval required before PM approval' },
+                { status: 400 }
+            );
+        }
+
         // Check PM has access to this project (skip for admin)
         if (userRole === ROLES.PROJECT_MANAGER) {
             if (!checkPermission(session.user, 'APPROVE_INVOICE', invoice)) {
@@ -69,7 +77,7 @@ export async function POST(request, { params }) {
         // Update invoice status based on action
         let newStatus = invoice.status;
         if (action === 'APPROVE') {
-            newStatus = 'PM Approved';
+            newStatus = 'Approved';
         } else if (action === 'REJECT') {
             newStatus = 'Rejected';
         } else if (action === 'REQUEST_INFO') {
@@ -88,33 +96,104 @@ export async function POST(request, { params }) {
         if (action === 'REQUEST_INFO') {
             try {
                 await connectToDatabase();
-                const recipientId = updatedInvoice.submittedByUserId;
+                const recipientRole = body.recipientRole || ROLES.VENDOR;
+                let recipientId = null;
+                let recipientName = null;
+
+                if (recipientRole === ROLES.VENDOR) {
+                    recipientId = updatedInvoice.submittedByUserId;
+                    const vendor = await db.getUserById(recipientId);
+                    recipientName = vendor?.name || 'Vendor';
+                } else if (recipientRole === ROLES.FINANCE_USER) {
+                    recipientId = updatedInvoice.financeApproval?.approvedBy;
+                    if (recipientId) {
+                        const fm = await db.getUserById(recipientId);
+                        recipientName = fm?.name || 'Finance Manager';
+                    }
+                } else if (recipientRole === ROLES.PROJECT_MANAGER) {
+                    recipientId = updatedInvoice.assignedPM;
+                    if (recipientId) {
+                        const pm = await db.getUserById(recipientId);
+                        recipientName = pm?.name || 'Project Manager';
+                    }
+                }
 
                 if (recipientId) {
-                    const recipient = await db.getUserById(recipientId);
-                    if (recipient) {
-                        const messageId = uuidv4();
-                        await Message.create({
-                            id: messageId,
-                            invoiceId: updatedInvoice.id,
-                            projectId: updatedInvoice.project || null,
-                            senderId: session.user.id,
-                            senderName: session.user.name || session.user.email,
-                            senderRole: userRole,
-                            recipientId: recipient.id,
-                            recipientName: recipient.name,
-                            subject: `Info Request: Invoice ${updatedInvoice.invoiceNumber || updatedInvoice.id.slice(-6)}`,
-                            content: notes || 'PM requested more information regarding this invoice.',
-                            messageType: 'INFO_REQUEST',
-                            threadId: messageId
-                        });
-                        console.log(`[PM Approve] Automated message created for vendor ${recipientId}`);
-                    }
+                    const messageId = uuidv4();
+                    await Message.create({
+                        id: messageId,
+                        invoiceId: updatedInvoice.id,
+                        projectId: updatedInvoice.project || null,
+                        senderId: session.user.id,
+                        senderName: session.user.name || session.user.email,
+                        senderRole: userRole,
+                        recipientId: recipientId,
+                        recipientName: recipientName,
+                        subject: `Info Request: Invoice ${updatedInvoice.invoiceNumber || updatedInvoice.id.slice(-6)}`,
+                        content: notes || `${userRole} requested more information regarding this invoice.`,
+                        messageType: 'INFO_REQUEST',
+                        threadId: messageId
+                    });
+                    console.log(`[PM Action] Automated message created for ${recipientRole} (${recipientId})`);
                 } else {
-                    console.warn(`[PM Approve] No submittedByUserId found for invoice ${id}, skipping automated message.`);
+                    console.warn(`[PM Action] No recipient found for role ${recipientRole}, skipping automated message.`);
                 }
             } catch (msgErr) {
-                console.error('[PM Approve] Failed to create automated message:', msgErr);
+                console.error('[PM Action] Failed to create automated message:', msgErr);
+            }
+        }
+
+        // Notify both Vendor and Finance User on rejection
+        if (action === 'REJECT') {
+            try {
+                await connectToDatabase();
+                const invoiceLabel = updatedInvoice.invoiceNumber || updatedInvoice.id.slice(-6);
+
+                // Notify Vendor
+                const vendorId = updatedInvoice.submittedByUserId;
+                if (vendorId) {
+                    const vendor = await db.getUserById(vendorId);
+                    const msgId1 = uuidv4();
+                    await Message.create({
+                        id: msgId1,
+                        invoiceId: updatedInvoice.id,
+                        projectId: updatedInvoice.project || null,
+                        senderId: session.user.id,
+                        senderName: session.user.name || session.user.email,
+                        senderRole: userRole,
+                        recipientId: vendorId,
+                        recipientName: vendor?.name || 'Vendor',
+                        subject: `Invoice Rejected: ${invoiceLabel}`,
+                        content: notes || 'Your invoice has been rejected by the Project Manager.',
+                        messageType: 'REJECTION',
+                        threadId: msgId1
+                    });
+                    console.log(`[PM Reject] Notification sent to vendor (${vendorId})`);
+                }
+
+                // Notify Finance User who approved it
+                const financeUserId = updatedInvoice.financeApproval?.approvedBy;
+                if (financeUserId) {
+                    const financeUser = await db.getUserById(financeUserId);
+                    const msgId2 = uuidv4();
+                    await Message.create({
+                        id: msgId2,
+                        invoiceId: updatedInvoice.id,
+                        projectId: updatedInvoice.project || null,
+                        senderId: session.user.id,
+                        senderName: session.user.name || session.user.email,
+                        senderRole: userRole,
+                        recipientId: financeUserId,
+                        recipientName: financeUser?.name || 'Finance User',
+                        subject: `PM Rejected Invoice: ${invoiceLabel}`,
+                        content: notes || 'The Project Manager has rejected this invoice that you previously approved.',
+                        messageType: 'REJECTION',
+                        threadId: msgId2
+                    });
+                    console.log(`[PM Reject] Notification sent to finance user (${financeUserId})`);
+                }
+            } catch (msgErr) {
+                console.error('[PM Reject] Failed to create rejection notifications:', msgErr);
             }
         }
 

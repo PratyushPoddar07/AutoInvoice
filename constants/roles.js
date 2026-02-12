@@ -51,12 +51,14 @@ export const MENU_PERMISSIONS = {
     'Overview': [ROLES.ADMIN, ROLES.PROJECT_MANAGER, ROLES.FINANCE_USER],
     'Digitization': [ROLES.FINANCE_USER],
     'Matching': [ROLES.ADMIN, ROLES.FINANCE_USER, ROLES.PROJECT_MANAGER],
-    'Approvals': [ROLES.ADMIN, ROLES.PROJECT_MANAGER],
+    'Approvals': [ROLES.ADMIN],
+    'PM Approval Queue': [ROLES.PROJECT_MANAGER],
     'Documents': [ROLES.ADMIN, ROLES.FINANCE_USER, ROLES.PROJECT_MANAGER],
     'Messages': [ROLES.ADMIN, ROLES.PROJECT_MANAGER, ROLES.VENDOR],
     'Dashboard': [ROLES.ADMIN, ROLES.FINANCE_USER, ROLES.VENDOR],
     'Analytics': [ROLES.ADMIN, ROLES.FINANCE_USER],
     'Finance Dashboard': [ROLES.ADMIN, ROLES.FINANCE_USER],
+    'Finance Approval Queue': [ROLES.FINANCE_USER],
     'Manual Entry': [ROLES.ADMIN, ROLES.FINANCE_USER],
     'Configuration': [ROLES.ADMIN],
     'User Management': [ROLES.ADMIN],
@@ -123,10 +125,9 @@ export const hasPermission = (user, action, resource = null) => {
 export const canSeeMenuItem = (user, itemName) => {
     if (!user) return false;
     const userRole = getNormalizedRole(user);
-    if (userRole === ROLES.ADMIN) return true;
 
     const allowedRoles = MENU_PERMISSIONS[itemName];
-    if (!allowedRoles) return true; // Default to visible if not defined
+    if (!allowedRoles) return false; // Hidden if not explicitly allowed
 
     return allowedRoles.includes(userRole);
 };

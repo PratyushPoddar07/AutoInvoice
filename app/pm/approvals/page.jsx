@@ -1,11 +1,17 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import PageHeader from '@/components/Layout/PageHeader';
 import Card from '@/components/ui/Card';
 import Icon from '@/components/Icon';
+import ApprovalTracker from '@/components/Approvals/ApprovalTracker';
+import DocumentViewer from '@/components/ui/DocumentViewer';
+import { useAuth } from '@/context/AuthContext';
+import clsx from 'clsx';
+
+const POLL_INTERVAL = 8000; // 8 seconds
 
 export default function PMApprovalsPage() {
     return (
@@ -16,342 +22,502 @@ export default function PMApprovalsPage() {
 }
 
 function PMApprovalsPageContent() {
-    const [invoices, setInvoices] = useState([]);
-    const [projects, setProjects] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [processingId, setProcessingId] = useState(null);
-    const [actionModal, setActionModal] = useState(null);
-    const [notes, setNotes] = useState('');
-    const [filterProject, setFilterProject] = useState('');
-    const [viewerInvoiceId, setViewerInvoiceId] = useState(null);
-    const [viewerLoading, setViewerLoading] = useState(false);
-
+    const { user } = useAuth();
     const searchParams = useSearchParams();
 
-    useEffect(() => {
-        fetchInvoices();
-        fetchProjects();
-    }, [filterProject]);
+    const [allInvoices, setAllInvoices] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [lastUpdated, setLastUpdated] = useState(null);
+    const [isLive, setIsLive] = useState(true);
 
-    useEffect(() => {
-        const invoiceId = searchParams.get('invoiceId');
-        if (invoiceId && invoices.length > 0) {
-            setViewerInvoiceId(invoiceId);
-        }
-    }, [searchParams, invoices.length]);
+    // Filter & search
+    const [activeTab, setActiveTab] = useState('all');
+    const [searchQuery, setSearchQuery] = useState('');
 
-    const fetchInvoices = async () => {
+    // Document viewer
+    const [viewerInvoiceId, setViewerInvoiceId] = useState(null);
+    const [viewerLoading, setViewerLoading] = useState(false);
+    const [spreadsheetData, setSpreadsheetData] = useState(null);
+
+    // Polling ref
+    const pollRef = useRef(null);
+    const prevCountRef = useRef(0);
+    const [newActivity, setNewActivity] = useState(false);
+
+    // ── Fetch invoices ──
+    const fetchInvoices = async (silent = false) => {
         try {
-            setLoading(true);
+            if (!silent) setLoading(true);
             setError(null);
-            // Optimization: Fetch only relevant statuses - Standardized to SNAKE_CASE to match backend standard
-            const res = await fetch('/api/invoices?status=RECEIVED,DIGITIZING,VALIDATION_REQUIRED,VERIFIED,MATCH_DISCREPANCY,PENDING_APPROVAL');
+            const res = await fetch(`/api/invoices?t=${Date.now()}`);
             const data = await res.json();
-            if (!res.ok) throw new Error(data?.error || 'Failed to fetch invoices');
+            if (!res.ok) throw new Error(data?.error || 'Failed to fetch');
+            const list = Array.isArray(data) ? data : (data.invoices || []);
 
-            // Backward/forward compatibility: /api/invoices may return an array or { invoices: [] }
-            const invoiceList = Array.isArray(data) ? data : (data.invoices || []);
-
-            // Filter for invoices pending PM approval - Standardized to SNAKE_CASE to match backend standard
-            let pending = invoiceList.filter(inv =>
-                inv.status === 'RECEIVED' ||
-                inv.status === 'DIGITIZING' ||
-                inv.status === 'VALIDATION_REQUIRED' ||
-                inv.status === 'VERIFIED' ||
-                inv.status === 'PENDING_APPROVAL' ||
-                inv.status === 'MATCH_DISCREPANCY' ||
-                (inv.pmApproval?.status === 'PENDING' || !inv.pmApproval?.status)
-            );
-
-            if (filterProject) {
-                pending = pending.filter(inv => inv.project === filterProject);
+            // Detect new activity
+            if (prevCountRef.current > 0 && list.length !== prevCountRef.current) {
+                setNewActivity(true);
+                setTimeout(() => setNewActivity(false), 3000);
             }
+            prevCountRef.current = list.length;
 
-            setInvoices(pending);
+            setAllInvoices(list);
+            setLastUpdated(new Date());
         } catch (err) {
-            setError(err.message);
+            if (!silent) setError(err.message);
         } finally {
             setLoading(false);
         }
     };
 
-    const fetchProjects = async () => {
-        try {
-            const res = await fetch('/api/pm/projects');
-            const data = await res.json();
-            if (res.ok) setProjects(data.projects || []);
-        } catch (err) {
-            console.error('Error fetching projects:', err);
+    // Auto-poll
+    useEffect(() => {
+        fetchInvoices();
+        if (isLive) {
+            pollRef.current = setInterval(() => fetchInvoices(true), POLL_INTERVAL);
+        }
+        return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    }, [isLive]);
+
+    // Handle URL-based invoice view
+    useEffect(() => {
+        const invoiceId = searchParams.get('invoiceId');
+        if (invoiceId && allInvoices.length > 0) {
+            handleViewDocument(invoiceId);
+        }
+    }, [searchParams, allInvoices.length]);
+
+    const handleViewDocument = async (id) => {
+        setViewerInvoiceId(id);
+        setViewerLoading(true);
+        setSpreadsheetData(null);
+
+        const inv = allInvoices.find(i => i.id === id);
+        if (inv) {
+            const fileName = (inv.originalName || "").toLowerCase();
+            const isSpreadsheet = fileName.endsWith('.xls') || fileName.endsWith('.xlsx') || fileName.endsWith('.csv');
+            if (isSpreadsheet) {
+                try {
+                    const res = await fetch(`/api/invoices/${id}/preview`);
+                    const data = await res.json();
+                    if (data.data) setSpreadsheetData(data.data);
+                } catch (err) {
+                    console.error("Failed to fetch spreadsheet preview:", err);
+                }
+            }
+            setViewerLoading(false);
         }
     };
 
-    const handleAction = async (invoiceId, action) => {
-        try {
-            setProcessingId(invoiceId);
-            const res = await fetch(`/api/pm/approve/${invoiceId}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action, notes })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error);
+    // ── Derive workflow status ──
+    const getWorkflowStage = (inv) => {
+        if (inv.pmApproval?.status === 'APPROVED') return 'completed';
+        if (inv.pmApproval?.status === 'REJECTED') return 'pm_rejected';
+        if (inv.financeApproval?.status === 'REJECTED') return 'finance_rejected';
+        if (inv.financeApproval?.status === 'APPROVED') return 'pm_review';
+        if (inv.status === 'RECEIVED' || inv.status === 'DIGITIZING' || inv.status === 'VALIDATION_REQUIRED' || inv.status === 'VERIFIED') return 'processing';
+        return 'vendor_submitted';
+    };
 
-            setActionModal(null);
-            setNotes('');
-            fetchInvoices();
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setProcessingId(null);
+    const getStageInfo = (stage) => {
+        switch (stage) {
+            case 'vendor_submitted': return { label: 'Vendor Submitted', color: 'bg-slate-100 text-slate-600 border-slate-200', icon: 'Upload', dot: 'bg-slate-400' };
+            case 'processing': return { label: 'Processing', color: 'bg-blue-50 text-blue-600 border-blue-200', icon: 'Loader', dot: 'bg-blue-500' };
+            case 'pm_review': return { label: 'PM Review', color: 'bg-indigo-50 text-indigo-600 border-indigo-200', icon: 'UserCheck', dot: 'bg-indigo-500' };
+            case 'completed': return { label: 'Fully Approved', color: 'bg-emerald-50 text-emerald-600 border-emerald-200', icon: 'CheckCircle2', dot: 'bg-emerald-500' };
+            case 'finance_rejected': return { label: 'Finance Rejected', color: 'bg-rose-50 text-rose-600 border-rose-200', icon: 'XCircle', dot: 'bg-rose-500' };
+            case 'pm_rejected': return { label: 'PM Rejected', color: 'bg-rose-50 text-rose-600 border-rose-200', icon: 'XCircle', dot: 'bg-rose-500' };
+            default: return { label: 'Unknown', color: 'bg-slate-100 text-slate-500 border-slate-200', icon: 'HelpCircle', dot: 'bg-slate-400' };
         }
     };
+
+    // ── Tab counts ──
+    const tabCounts = useMemo(() => {
+        const counts = { all: allInvoices.length, pending: 0, finance_done: 0, pm_review: 0, approved: 0, rejected: 0 };
+        allInvoices.forEach(inv => {
+            const stage = getWorkflowStage(inv);
+            if (stage === 'vendor_submitted' || stage === 'processing') counts.pending++;
+            if (inv.financeApproval?.status === 'APPROVED') counts.finance_done++;
+            if (stage === 'pm_review') counts.pm_review++;
+            if (stage === 'completed') counts.approved++;
+            if (stage === 'finance_rejected' || stage === 'pm_rejected') counts.rejected++;
+        });
+        return counts;
+    }, [allInvoices]);
+
+    // ── Filtered invoices ──
+    const filteredInvoices = useMemo(() => {
+        let list = allInvoices;
+        switch (activeTab) {
+            case 'pending':
+                list = list.filter(i => { const s = getWorkflowStage(i); return s === 'vendor_submitted' || s === 'processing'; });
+                break;
+            case 'finance_done':
+                list = list.filter(i => i.financeApproval?.status === 'APPROVED');
+                break;
+            case 'pm_review':
+                list = list.filter(i => getWorkflowStage(i) === 'pm_review');
+                break;
+            case 'approved':
+                list = list.filter(i => getWorkflowStage(i) === 'completed');
+                break;
+            case 'rejected':
+                list = list.filter(i => { const s = getWorkflowStage(i); return s === 'finance_rejected' || s === 'pm_rejected'; });
+                break;
+        }
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            list = list.filter(i =>
+                (i.invoiceNumber || '').toLowerCase().includes(q) ||
+                (i.vendorName || '').toLowerCase().includes(q) ||
+                (i.vendorCode || '').toLowerCase().includes(q) ||
+                (i.id || '').toLowerCase().includes(q)
+            );
+        }
+        return list;
+    }, [allInvoices, activeTab, searchQuery]);
+
+    const TAB_COLORS = {
+        all: { active: 'bg-slate-100 text-slate-700 border-slate-200', badge: 'bg-slate-200 text-slate-700' },
+        pending: { active: 'bg-amber-50 text-amber-700 border-amber-200', badge: 'bg-amber-100 text-amber-700' },
+        finance_done: { active: 'bg-blue-50 text-blue-700 border-blue-200', badge: 'bg-blue-100 text-blue-700' },
+        pm_review: { active: 'bg-indigo-50 text-indigo-700 border-indigo-200', badge: 'bg-indigo-100 text-indigo-700' },
+        approved: { active: 'bg-emerald-50 text-emerald-700 border-emerald-200', badge: 'bg-emerald-100 text-emerald-700' },
+        rejected: { active: 'bg-rose-50 text-rose-700 border-rose-200', badge: 'bg-rose-100 text-rose-700' },
+    };
+
+    const tabs = [
+        { key: 'all', label: 'All', count: tabCounts.all, icon: 'LayoutList' },
+        { key: 'pending', label: 'Vendor Stage', count: tabCounts.pending, icon: 'Upload' },
+        { key: 'finance_done', label: 'Finance Done', count: tabCounts.finance_done, icon: 'ShieldCheck' },
+        { key: 'pm_review', label: 'PM Review', count: tabCounts.pm_review, icon: 'UserCheck' },
+        { key: 'approved', label: 'Fully Approved', count: tabCounts.approved, icon: 'CheckCircle2' },
+        { key: 'rejected', label: 'Rejected', count: tabCounts.rejected, icon: 'XCircle' },
+    ];
 
     return (
-        <div className="pb-10">
-            <PageHeader
-                title="Invoice Approvals"
-                subtitle="Review and approve project invoices"
-                icon="CheckCircle"
-                accent="indigo"
-            />
+        <div className="pb-10 space-y-5">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                    <h1 className="text-2xl font-black text-slate-800 tracking-tight">Approval Workflow Tracker</h1>
+                    <p className="text-sm text-slate-400 mt-0.5">Real-time tracking of invoice approvals across all stages</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    {/* Live indicator */}
+                    <button
+                        onClick={() => setIsLive(!isLive)}
+                        className={clsx(
+                            "inline-flex items-center gap-2 h-9 px-3.5 rounded-xl text-[11px] font-bold border transition-all",
+                            isLive
+                                ? "bg-emerald-50 text-emerald-600 border-emerald-200"
+                                : "bg-slate-50 text-slate-400 border-slate-200"
+                        )}
+                    >
+                        <span className={clsx(
+                            "w-2 h-2 rounded-full shrink-0",
+                            isLive ? "bg-emerald-500 animate-pulse" : "bg-slate-300"
+                        )} />
+                        {isLive ? 'LIVE' : 'PAUSED'}
+                    </button>
 
-            <div className="max-w-7xl mx-auto space-y-6">
-                {/* Filters */}
-                <Card className="p-6">
-                    <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                        <select
-                            value={filterProject}
-                            onChange={(e) => setFilterProject(e.target.value)}
-                            className="w-full sm:w-64 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        >
-                            <option value="">All Projects</option>
-                            {projects.map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                        </select>
-                        <span className="text-slate-500 text-sm font-medium">
-                            {invoices.length} invoice{invoices.length !== 1 ? 's' : ''} pending approval
+                    {/* Last updated */}
+                    {lastUpdated && (
+                        <span className="text-[10px] text-slate-400 font-medium hidden sm:inline">
+                            Updated {lastUpdated.toLocaleTimeString()}
                         </span>
-                    </div>
-                </Card>
-
-                {/* Error Display */}
-                <AnimatePresence>
-                    {error && (
-                        <motion.div
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0 }}
-                            className="bg-rose-50 border border-rose-200 text-rose-600 px-4 py-3 rounded-xl mb-6 flex justify-between items-center"
-                        >
-                            <span>{error}</span>
-                            <button onClick={() => setError(null)} className="p-1 hover:bg-rose-100 rounded-lg">✕</button>
-                        </motion.div>
                     )}
-                </AnimatePresence>
 
-                {/* Invoice Cards */}
-                {loading ? (
-                    <div className="text-center py-12">
-                        <span className="loading loading-spinner loading-lg text-primary"></span>
-                        <p className="mt-4 text-slate-500 font-medium">Loading invoices...</p>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {invoices.map((invoice, idx) => (
-                            <motion.div
-                                key={invoice.id}
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: idx * 0.05 }}
-                            >
-                                <Card className="p-6 h-full flex flex-col border-slate-200/60 hover:shadow-xl hover:shadow-slate-200/40 transition-all group">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <h3 className="text-lg font-semibold text-slate-800">
-                                                {invoice.invoiceNumber || `Invoice ${invoice.id.slice(0, 8)}`}
-                                            </h3>
-                                            <p className="text-slate-500 font-medium">
-                                                {invoice.vendorCode && <span className="font-mono text-indigo-600 mr-1.5 px-1.5 py-0.5 bg-indigo-50 rounded italic">{invoice.vendorCode}</span>}
-                                                {invoice.vendorName}
-                                            </p>
-                                            {(invoice.vendorCode || invoice.vendorId) && (
-                                                <p className="text-xs text-slate-400 font-mono mt-1">
-                                                    Vendor ID: {invoice.vendorCode || invoice.vendorId}
-                                                </p>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm mb-6">
-                                        <div>
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Date</p>
-                                            <p className="font-bold text-slate-700">{invoice.date || '-'}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Project</p>
-                                            <p className="font-bold text-slate-700 truncate">{invoice.project || 'Unassigned'}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">PO Number</p>
-                                            <p className="font-bold text-slate-700">{invoice.poNumber || '-'}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status</p>
-                                            {invoice.pmApproval?.status ? (
-                                                <span
-                                                    className={`inline-flex px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border
-                                                    ${invoice.pmApproval.status === 'APPROVED'
-                                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                                                            : invoice.pmApproval.status === 'REJECTED'
-                                                                ? 'bg-rose-50 text-rose-700 border-rose-100'
-                                                                : 'bg-amber-50 text-amber-600 border-amber-100'
-                                                        }`}
-                                                >
-                                                    {invoice.pmApproval.status.replace(/_/g, ' ')}
-                                                </span>
-                                            ) : (
-                                                <span className="inline-flex px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-600 border border-amber-100">
-                                                    {invoice.status}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* View Doc Link */}
-                                    <div className="mb-6">
-                                        <button
-                                            type="button"
-                                            onClick={() => { setViewerInvoiceId(invoice.id); setViewerLoading(true); }}
-                                            className="inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-700 font-bold text-xs uppercase tracking-wider"
-                                        >
-                                            <Icon name="FileText" size={14} /> View Document
-                                        </button>
-                                    </div>
-
-                                    {/* Actions */}
-                                    <div className="mt-auto flex flex-wrap gap-2 pt-6 border-t border-slate-100">
-                                        {invoice.pmApproval?.status === 'APPROVED' || invoice.pmApproval?.status === 'REJECTED' ? (
-                                            <span className={`inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest
-                                                ${invoice.pmApproval?.status === 'APPROVED'
-                                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                                                    : 'bg-rose-50 text-rose-700 border border-rose-100'
-                                                }`}
-                                            >
-                                                {invoice.pmApproval?.status === 'APPROVED' ? 'Approved' : 'Rejected'}
-                                            </span>
-                                        ) : (
-                                            <>
-                                                <button
-                                                    onClick={() => setActionModal({ invoice, action: 'APPROVE' })}
-                                                    disabled={processingId === invoice.id}
-                                                    className="flex-1 min-w-[120px] px-4 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all font-bold text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-500/20 disabled:opacity-50"
-                                                >
-                                                    ✓ Approve
-                                                </button>
-                                                <button
-                                                    onClick={() => setActionModal({ invoice, action: 'REJECT' })}
-                                                    disabled={processingId === invoice.id}
-                                                    className="flex-1 min-w-[120px] px-4 py-2.5 bg-rose-600 text-white rounded-xl hover:bg-rose-700 transition-all font-bold text-[10px] uppercase tracking-widest shadow-lg shadow-rose-500/20 disabled:opacity-50"
-                                                >
-                                                    ✕ Reject
-                                                </button>
-                                                <button
-                                                    onClick={() => setActionModal({ invoice, action: 'REQUEST_INFO' })}
-                                                    disabled={processingId === invoice.id}
-                                                    className="w-full sm:flex-1 px-4 py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-900 transition-all font-bold text-[10px] uppercase tracking-widest shadow-lg shadow-slate-500/10 disabled:opacity-50"
-                                                >
-                                                    ? Request Info
-                                                </button>
-                                            </>
-                                        )}
-                                    </div>
-                                </Card>
-                            </motion.div>
-                        ))}
-                    </div>
-                )}
-
-                {!loading && invoices.length === 0 && (
-                    <Card className="text-center py-20">
-                        <div className="max-w-xs mx-auto">
-                            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-emerald-500">
-                                <Icon name="CheckCircle" size={32} />
-                            </div>
-                            <h3 className="text-lg font-bold text-slate-800">All caught up!</h3>
-                            <p className="text-slate-500 mt-1">No invoices are currently pending your approval.</p>
-                        </div>
-                    </Card>
-                )}
-
-                {/* Action Confirmation Modal */}
-                <AnimatePresence>
-                    {actionModal && (
-                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-100 p-4">
-                            <motion.div
-                                initial={{ scale: 0.95, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                exit={{ scale: 0.95, opacity: 0 }}
-                                className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl border border-slate-100"
-                            >
-                                <h2 className="text-xl font-bold text-white mb-4">
-                                    {actionModal.action === 'APPROVE' ? 'Approve' :
-                                        actionModal.action === 'REJECT' ? 'Reject' : 'Request Info for'} Invoice?
-                                </h2>
-                                <p className="text-gray-300 mb-4">
-                                    {actionModal.invoice.invoiceNumber || actionModal.invoice.id.slice(0, 8)}
-                                    <br />
-                                    <span className="text-white font-medium">
-                                        ₹{actionModal.invoice.amount?.toLocaleString()} - {actionModal.invoice.vendorCode && <span className="font-mono text-purple-300">{actionModal.invoice.vendorCode}</span>} {actionModal.invoice.vendorCode && '· '}{actionModal.invoice.vendorName}
-                                    </span>
-                                </p>
-                                <div className="mb-6">
-                                    <label className="block text-sm text-gray-400 mb-1">
-                                        {actionModal.action === 'REJECT' ? 'Rejection Reason' :
-                                            actionModal.action === 'REQUEST_INFO' ? 'Information Needed' : 'Notes (Optional)'}
-                                        {actionModal.action !== 'APPROVE' && <span className="text-rose-500 ml-1">*</span>}
-                                    </label>
-                                    <textarea
-                                        value={notes}
-                                        onChange={(e) => setNotes(e.target.value)}
-                                        rows={4}
-                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-slate-700 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all resize-none"
-                                        placeholder={
-                                            actionModal.action === 'REJECT' ? 'Reason for rejection...' :
-                                                actionModal.action === 'REQUEST_INFO' ? 'What information do you need?...' :
-                                                    'Add any additional notes...'
-                                        }
-                                    />
-                                </div>
-
-                                <div className="flex flex-col sm:flex-row gap-3">
-                                    <button
-                                        onClick={() => { setActionModal(null); setNotes(''); }}
-                                        className="order-2 sm:order-1 flex-1 px-6 py-3 border border-slate-200 text-slate-600 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-50 transition-all"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        onClick={() => handleAction(actionModal.invoice.id, actionModal.action)}
-                                        disabled={processingId || (actionModal.action !== 'APPROVE' && !notes)}
-                                        className={`order-1 sm:order-2 flex-1 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest text-white shadow-lg transition-all active:scale-95 disabled:opacity-50 ${actionModal.action === 'APPROVE'
-                                            ? 'bg-emerald-600 shadow-emerald-500/20 hover:bg-emerald-700'
-                                            : actionModal.action === 'REJECT'
-                                                ? 'bg-rose-600 shadow-rose-500/20 hover:bg-rose-700'
-                                                : 'bg-indigo-600 shadow-indigo-500/20 hover:bg-indigo-700'
-                                            }`}
-                                    >
-                                        {processingId ? 'Processing...' : 'Confirm'}
-                                    </button>
-                                </div>
-                            </motion.div>
-                        </div>
-                    )}
-                </AnimatePresence>
+                    {/* Manual refresh */}
+                    <button
+                        onClick={() => fetchInvoices(false)}
+                        disabled={loading}
+                        className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 flex items-center justify-center transition-all disabled:opacity-50"
+                    >
+                        <Icon name="RefreshCw" size={16} className={loading ? 'animate-spin' : ''} />
+                    </button>
+                </div>
             </div>
 
-            {/* Document viewer modal – matches vendor review behavior */}
+            {/* New activity flash */}
+            <AnimatePresence>
+                {newActivity && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-bold"
+                    >
+                        <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                        New activity detected — data refreshed
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Stats Row */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                {[
+                    { label: 'Total', value: tabCounts.all, color: 'text-slate-600', bg: 'bg-white' },
+                    { label: 'Vendor Stage', value: tabCounts.pending, color: 'text-amber-600', bg: 'bg-amber-50' },
+                    { label: 'Finance Done', value: tabCounts.finance_done, color: 'text-blue-600', bg: 'bg-blue-50' },
+                    { label: 'PM Review', value: tabCounts.pm_review, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+                    { label: 'Approved', value: tabCounts.approved, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                    { label: 'Rejected', value: tabCounts.rejected, color: 'text-rose-600', bg: 'bg-rose-50' },
+                ].map(s => (
+                    <div key={s.label} className={`${s.bg} rounded-xl border border-slate-100 p-3 text-center`}>
+                        <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-0.5">{s.label}</p>
+                    </div>
+                ))}
+            </div>
+
+            {/* Search */}
+            <div className="relative">
+                <Icon name="Search" size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by invoice number, vendor name, or code..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition-all"
+                />
+            </div>
+
+            {/* Tab Navigation */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                {tabs.map((tab) => {
+                    const colors = TAB_COLORS[tab.key];
+                    return (
+                        <button
+                            key={tab.key}
+                            onClick={() => setActiveTab(tab.key)}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap border ${activeTab === tab.key
+                                    ? `${colors.active} shadow-sm`
+                                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50 border-transparent'
+                                }`}
+                        >
+                            <Icon name={tab.icon} size={16} />
+                            {tab.label}
+                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${activeTab === tab.key ? colors.badge : 'bg-slate-100 text-slate-400'
+                                }`}>{tab.count}</span>
+                        </button>
+                    );
+                })}
+            </div>
+
+            {/* Error */}
+            <AnimatePresence>
+                {error && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                        className="flex items-center gap-3 p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 text-sm font-medium"
+                    >
+                        <Icon name="AlertCircle" size={18} />
+                        <span className="flex-1">{error}</span>
+                        <button onClick={() => setError(null)} className="w-6 h-6 rounded-lg hover:bg-rose-100 flex items-center justify-center">
+                            <Icon name="X" size={14} />
+                        </button>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Invoice Cards */}
+            <div className="space-y-3">
+                {loading && allInvoices.length === 0 ? (
+                    <div className="rounded-2xl border border-slate-100 bg-white p-16 text-center">
+                        <div className="w-10 h-10 border-3 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4" />
+                        <p className="text-sm text-slate-400 font-medium">Loading workflow data...</p>
+                    </div>
+                ) : filteredInvoices.length === 0 ? (
+                    <div className="rounded-2xl border border-slate-100 bg-white p-16 text-center">
+                        <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center mx-auto mb-4">
+                            <Icon name="Inbox" size={28} className="text-slate-300" />
+                        </div>
+                        <p className="text-base font-bold text-slate-400">No invoices found</p>
+                        <p className="text-xs text-slate-300 mt-1">
+                            {searchQuery ? 'Try a different search term.' : 'No invoices match this filter.'}
+                        </p>
+                    </div>
+                ) : (
+                    filteredInvoices.map((inv, idx) => {
+                        const stage = getWorkflowStage(inv);
+                        const stageInfo = getStageInfo(stage);
+                        return (
+                            <motion.div
+                                key={inv.id}
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: idx * 0.02 }}
+                                className="rounded-2xl border border-slate-100 bg-white shadow-sm hover:shadow-md transition-all overflow-hidden"
+                            >
+                                <div className="p-4 sm:p-5">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                        {/* Left */}
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100/50 flex items-center justify-center font-bold text-indigo-600 text-xs shrink-0">
+                                                {inv.vendorName?.substring(0, 2).toUpperCase() || 'NA'}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <p className="font-bold text-slate-800 text-sm">{inv.invoiceNumber || inv.id?.slice(0, 8)}</p>
+                                                    <span className={`inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md border ${stageInfo.color}`}>
+                                                        <Icon name={stageInfo.icon} size={10} />
+                                                        {stageInfo.label}
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-400 mt-0.5">
+                                                    <span className="font-medium text-slate-500">{inv.vendorName || 'Unknown Vendor'}</span>
+                                                    {inv.vendorCode && (
+                                                        <>
+                                                            <span>·</span>
+                                                            <span className="font-mono text-indigo-500 font-semibold">{inv.vendorCode}</span>
+                                                        </>
+                                                    )}
+                                                    {inv.date && (
+                                                        <>
+                                                            <span>·</span>
+                                                            <span>{inv.date}</span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Right: Amount */}
+                                        <p className="text-lg sm:text-xl font-black text-slate-800 shrink-0 pl-13 sm:pl-0">
+                                            ₹{Number(inv.amount || 0).toLocaleString('en-IN')}
+                                        </p>
+                                    </div>
+
+                                    {/* Approval Pipeline Tracker */}
+                                    <div className="mt-4 bg-slate-50/70 rounded-xl p-3 border border-slate-100">
+                                        <div className="flex items-center justify-between gap-2">
+                                            {/* Vendor Step */}
+                                            <div className="flex items-center gap-1.5">
+                                                <div className={clsx(
+                                                    "w-7 h-7 rounded-lg flex items-center justify-center text-white",
+                                                    "bg-emerald-500"
+                                                )}>
+                                                    <Icon name="CheckCircle2" size={14} />
+                                                </div>
+                                                <div className="hidden xs:block">
+                                                    <p className="text-[9px] font-bold text-slate-400 uppercase">Vendor</p>
+                                                    <p className="text-[10px] font-bold text-emerald-600">Submitted</p>
+                                                </div>
+                                            </div>
+
+                                            <div className={clsx("flex-1 h-0.5 rounded-full mx-1", inv.financeApproval?.status ? 'bg-emerald-300' : 'bg-slate-200')} />
+
+                                            {/* Finance Step */}
+                                            <div className="flex items-center gap-1.5">
+                                                <div className={clsx(
+                                                    "w-7 h-7 rounded-lg flex items-center justify-center",
+                                                    inv.financeApproval?.status === 'APPROVED' ? "bg-emerald-500 text-white" :
+                                                        inv.financeApproval?.status === 'REJECTED' ? "bg-rose-500 text-white" :
+                                                            "bg-slate-200 text-slate-400"
+                                                )}>
+                                                    <Icon name={
+                                                        inv.financeApproval?.status === 'APPROVED' ? 'CheckCircle2' :
+                                                            inv.financeApproval?.status === 'REJECTED' ? 'XCircle' : 'Clock'
+                                                    } size={14} />
+                                                </div>
+                                                <div className="hidden xs:block">
+                                                    <p className="text-[9px] font-bold text-slate-400 uppercase">Finance</p>
+                                                    <p className={clsx("text-[10px] font-bold",
+                                                        inv.financeApproval?.status === 'APPROVED' ? 'text-emerald-600' :
+                                                            inv.financeApproval?.status === 'REJECTED' ? 'text-rose-600' : 'text-slate-400'
+                                                    )}>
+                                                        {inv.financeApproval?.status === 'APPROVED' ? 'Approved' :
+                                                            inv.financeApproval?.status === 'REJECTED' ? 'Rejected' : 'Pending'}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className={clsx("flex-1 h-0.5 rounded-full mx-1", inv.pmApproval?.status ? (inv.pmApproval?.status === 'APPROVED' ? 'bg-emerald-300' : 'bg-rose-300') : 'bg-slate-200')} />
+
+                                            {/* PM Step */}
+                                            <div className="flex items-center gap-1.5">
+                                                <div className={clsx(
+                                                    "w-7 h-7 rounded-lg flex items-center justify-center",
+                                                    inv.pmApproval?.status === 'APPROVED' ? "bg-emerald-500 text-white" :
+                                                        inv.pmApproval?.status === 'REJECTED' ? "bg-rose-500 text-white" :
+                                                            "bg-slate-200 text-slate-400"
+                                                )}>
+                                                    <Icon name={
+                                                        inv.pmApproval?.status === 'APPROVED' ? 'CheckCircle2' :
+                                                            inv.pmApproval?.status === 'REJECTED' ? 'XCircle' : 'Clock'
+                                                    } size={14} />
+                                                </div>
+                                                <div className="hidden xs:block">
+                                                    <p className="text-[9px] font-bold text-slate-400 uppercase">PM</p>
+                                                    <p className={clsx("text-[10px] font-bold",
+                                                        inv.pmApproval?.status === 'APPROVED' ? 'text-emerald-600' :
+                                                            inv.pmApproval?.status === 'REJECTED' ? 'text-rose-600' : 'text-slate-400'
+                                                    )}>
+                                                        {inv.pmApproval?.status === 'APPROVED' ? 'Approved' :
+                                                            inv.pmApproval?.status === 'REJECTED' ? 'Rejected' : 'Pending'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Notes / Details Tags */}
+                                    <div className="flex flex-wrap items-center gap-2 mt-3">
+                                        {inv.financeApproval?.notes && (
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded-lg max-w-xs truncate" title={inv.financeApproval.notes}>
+                                                <Icon name="MessageSquare" size={10} /> Finance: {inv.financeApproval.notes}
+                                            </span>
+                                        )}
+                                        {inv.pmApproval?.notes && (
+                                            <span className={clsx("inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg max-w-xs truncate",
+                                                inv.pmApproval.status === 'REJECTED' ? 'text-rose-500 bg-rose-50' : 'text-emerald-500 bg-emerald-50'
+                                            )} title={inv.pmApproval.notes}>
+                                                <Icon name="MessageSquare" size={10} /> PM: {inv.pmApproval.notes}
+                                            </span>
+                                        )}
+                                        {inv.poNumber && (
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-lg">
+                                                <Icon name="Hash" size={10} /> PO: {inv.poNumber}
+                                            </span>
+                                        )}
+                                        {inv.project && (
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-lg">
+                                                <Icon name="FolderOpen" size={10} /> {inv.project}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Action Bar */}
+                                <div className="px-4 sm:px-5 py-2.5 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => handleViewDocument(inv.id)}
+                                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-white border border-slate-200 text-slate-600 text-[11px] font-bold hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-all"
+                                        >
+                                            <Icon name="Eye" size={14} />
+                                            View Doc
+                                        </button>
+                                        <a
+                                            href={`/api/invoices/${inv.id}/file`}
+                                            download={inv.originalName || `invoice-${inv.id}`}
+                                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-white border border-slate-200 text-slate-600 text-[11px] font-bold hover:bg-violet-50 hover:text-violet-600 hover:border-violet-200 transition-all"
+                                        >
+                                            <Icon name="Download" size={14} />
+                                            Download
+                                        </a>
+                                    </div>
+                                    <span className="text-[10px] text-slate-400 font-medium">
+                                        {inv.submittedAt ? new Date(inv.submittedAt).toLocaleDateString() : inv.date || ''}
+                                    </span>
+                                </div>
+                            </motion.div>
+                        );
+                    })
+                )}
+            </div>
+
+            {/* Document Viewer Modal */}
             <AnimatePresence>
                 {viewerInvoiceId && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -366,32 +532,53 @@ function PMApprovalsPageContent() {
                             initial={{ opacity: 0, scale: 0.98 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.98 }}
-                            className="relative bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden z-[101] flex flex-col max-h-[90vh]"
+                            className="relative bg-white w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden z-[101] flex flex-col max-h-[90vh]"
                         >
-                            <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50 shrink-0">
-                                <span className="font-semibold text-gray-800 text-sm truncate">
-                                    {invoices.find((i) => i.id === viewerInvoiceId)?.originalName || `Invoice ${viewerInvoiceId}`}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={() => setViewerInvoiceId(null)}
-                                    className="btn btn-ghost btn-sm btn-square"
-                                >
-                                    <Icon name="X" size={20} />
-                                </button>
+                            <div className="flex items-center justify-between px-5 py-3 border-b bg-slate-50/70 shrink-0">
+                                <div>
+                                    <h3 className="font-bold text-slate-800 text-sm truncate mr-4">
+                                        {allInvoices.find((i) => i.id === viewerInvoiceId)?.originalName || `Invoice ${viewerInvoiceId}`}
+                                    </h3>
+                                    <p className="text-[10px] text-slate-400">
+                                        {allInvoices.find((i) => i.id === viewerInvoiceId)?.vendorName || ''}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <a
+                                        href={`/api/invoices/${viewerInvoiceId}/file`}
+                                        download
+                                        className="h-8 px-3 rounded-lg bg-white border border-slate-200 text-slate-600 text-[11px] font-bold hover:bg-violet-50 hover:text-violet-600 hover:border-violet-200 transition-all inline-flex items-center gap-1.5"
+                                    >
+                                        <Icon name="Download" size={14} />
+                                        Download
+                                    </a>
+                                    <button
+                                        type="button"
+                                        onClick={() => setViewerInvoiceId(null)}
+                                        className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all"
+                                    >
+                                        <Icon name="X" size={18} />
+                                    </button>
+                                </div>
                             </div>
-                            <div className="flex-1 min-h-[70vh] bg-gray-100 relative">
+                            <div className="flex-1 min-h-[60vh] max-h-[80vh] bg-slate-100 relative overflow-auto">
                                 {viewerLoading && (
-                                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
-                                        <span className="loading loading-spinner loading-lg text-primary" />
+                                    <div className="absolute inset-0 flex items-center justify-center bg-slate-100 z-10">
+                                        <div className="w-10 h-10 border-3 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
                                     </div>
                                 )}
-                                <iframe
-                                    src={`/api/invoices/${viewerInvoiceId}/file`}
-                                    title="Invoice document"
-                                    className="w-full h-full min-h-[70vh] border-0"
-                                    onLoad={() => setViewerLoading(false)}
-                                />
+                                {(() => {
+                                    const inv = allInvoices.find(i => i.id === viewerInvoiceId);
+                                    if (!inv) return null;
+                                    return (
+                                        <DocumentViewer
+                                            invoiceId={viewerInvoiceId}
+                                            fileName={inv.originalName}
+                                            spreadsheetData={spreadsheetData}
+                                            onLoadingComplete={() => setViewerLoading(false)}
+                                        />
+                                    );
+                                })()}
                             </div>
                         </motion.div>
                     </div>

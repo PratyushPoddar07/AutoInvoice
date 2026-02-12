@@ -43,8 +43,10 @@ const InvoiceSchema = new mongoose.Schema({
     matching: { type: mongoose.Schema.Types.Mixed },
     // New RBAC fields
     assignedPM: { type: String },  // PM user ID for this invoice
+    assignedFinanceUser: { type: String }, // Specific Finance User ID for early-stage review
     financeApproval: { type: ApprovalSchema, default: () => ({}) },
     pmApproval: { type: ApprovalSchema, default: () => ({}) },
+    adminApproval: { type: ApprovalSchema, default: () => ({}) },
     hilReview: { type: HILReviewSchema, default: () => ({}) },
     documents: [InvoiceDocumentSchema],
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
@@ -52,10 +54,12 @@ const InvoiceSchema = new mongoose.Schema({
 // Indexes for efficient queries
 InvoiceSchema.index({ status: 1 });
 InvoiceSchema.index({ assignedPM: 1 });
+InvoiceSchema.index({ assignedFinanceUser: 1 });
 InvoiceSchema.index({ submittedByUserId: 1 });
 InvoiceSchema.index({ project: 1 });
 InvoiceSchema.index({ 'financeApproval.status': 1 });
 InvoiceSchema.index({ 'pmApproval.status': 1 });
+InvoiceSchema.index({ 'adminApproval.status': 1 });
 InvoiceSchema.index({ 'hilReview.status': 1 });
 
 export default mongoose.models.Invoice || mongoose.model('Invoice', InvoiceSchema);

@@ -2,25 +2,22 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import Link from 'next/link';
 import Icon from '@/components/Icon';
 import { useAuth } from '@/context/AuthContext';
 import DocumentViewer from '@/components/ui/DocumentViewer';
 
 const STATUS_STYLES = {
+    'Pending PM Approval': { bg: 'bg-indigo-50', text: 'text-indigo-700', dot: 'bg-indigo-500', label: 'Pending Your Review' },
     APPROVED: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Approved' },
-    VERIFIED: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Verified' },
-    PAID: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Paid' },
-    PM_APPROVED: { bg: 'bg-teal-50', text: 'text-teal-700', dot: 'bg-teal-500', label: 'PM Approved' },
+    Approved: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Approved' },
     REJECTED: { bg: 'bg-rose-50', text: 'text-rose-700', dot: 'bg-rose-500', label: 'Rejected' },
+    Rejected: { bg: 'bg-rose-50', text: 'text-rose-700', dot: 'bg-rose-500', label: 'Rejected' },
+    PAID: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Paid' },
     MATCH_DISCREPANCY: { bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-500', label: 'Discrepancy' },
-    VALIDATION_REQUIRED: { bg: 'bg-sky-50', text: 'text-sky-700', dot: 'bg-sky-500', label: 'Needs Validation' },
-    PENDING: { bg: 'bg-violet-50', text: 'text-violet-700', dot: 'bg-violet-500', label: 'Pending' },
-    'Pending PM Approval': { bg: 'bg-indigo-50', text: 'text-indigo-700', dot: 'bg-indigo-500', label: 'Sent to PM' },
 };
 const getStatus = (s) => STATUS_STYLES[s] || { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400', label: s?.replace(/_/g, ' ') || '—' };
 
-export default function FinanceApprovalQueuePage() {
+export default function PMApprovalQueuePage() {
     const { user } = useAuth();
     const [allInvoices, setAllInvoices] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -31,19 +28,14 @@ export default function FinanceApprovalQueuePage() {
     const [processingId, setProcessingId] = useState(null);
     const [actionModal, setActionModal] = useState(null); // { invoice, type: 'approve'|'reject' }
     const [notes, setNotes] = useState('');
-    const [selectedPM, setSelectedPM] = useState('');
-    const [pms, setPms] = useState([]);
 
     // Document viewer
     const [viewerInvoice, setViewerInvoice] = useState(null);
 
     // Filter
-    const [activeTab, setActiveTab] = useState('pending'); // pending | approved | rejected | all
+    const [activeTab, setActiveTab] = useState('pending');
 
-    useEffect(() => {
-        fetchInvoices();
-        fetchPMs();
-    }, []);
+    useEffect(() => { fetchInvoices(); }, []);
 
     const fetchInvoices = async () => {
         try {
@@ -59,85 +51,55 @@ export default function FinanceApprovalQueuePage() {
         }
     };
 
-    const fetchPMs = async () => {
-        try {
-            const res = await fetch('/api/pms');
-            if (res.ok) {
-                const data = await res.json();
-                setPms(data.pms || []);
-            }
-        } catch (err) {
-            console.error('Failed to fetch PMs:', err);
-        }
-    };
-
-    // Filter invoices assigned to this finance user
+    // Filter invoices assigned to this PM (forwarded by finance)
     const myInvoices = useMemo(() => {
         if (!user) return [];
         return allInvoices.filter(inv =>
-            inv.assignedFinanceUser === user.id ||
-            inv.assignedFinanceUser === user.email
+            (inv.assignedPM === user.id || inv.assignedPM === user.email) &&
+            inv.financeApproval?.status === 'APPROVED'
         );
     }, [allInvoices, user]);
 
-    // Tab-based filtering
+    // Tab counts
+    const pendingCount = myInvoices.filter(inv =>
+        !inv.pmApproval?.status || inv.pmApproval?.status === 'PENDING'
+    ).length;
+    const approvedCount = myInvoices.filter(inv =>
+        inv.pmApproval?.status === 'APPROVED'
+    ).length;
+    const rejectedCount = myInvoices.filter(inv =>
+        inv.pmApproval?.status === 'REJECTED'
+    ).length;
+
+    // Filtered by tab
     const filteredInvoices = useMemo(() => {
         switch (activeTab) {
             case 'pending':
                 return myInvoices.filter(inv =>
-                    !inv.financeApproval?.status ||
-                    inv.financeApproval?.status === 'PENDING' ||
-                    inv.status === 'PENDING' ||
-                    inv.status === 'VERIFIED' ||
-                    inv.status === 'RECEIVED'
+                    !inv.pmApproval?.status || inv.pmApproval?.status === 'PENDING'
                 );
             case 'approved':
-                return myInvoices.filter(inv =>
-                    inv.financeApproval?.status === 'APPROVED' ||
-                    inv.status === 'Pending PM Approval' ||
-                    inv.status === 'APPROVED' ||
-                    inv.status === 'PM_APPROVED' ||
-                    inv.status === 'PAID'
-                );
+                return myInvoices.filter(inv => inv.pmApproval?.status === 'APPROVED');
             case 'rejected':
-                return myInvoices.filter(inv =>
-                    inv.financeApproval?.status === 'REJECTED' ||
-                    inv.status === 'Rejected'
-                );
+                return myInvoices.filter(inv => inv.pmApproval?.status === 'REJECTED');
             default:
                 return myInvoices;
         }
     }, [myInvoices, activeTab]);
 
-    const pendingCount = myInvoices.filter(inv =>
-        !inv.financeApproval?.status || inv.financeApproval?.status === 'PENDING' ||
-        inv.status === 'PENDING' || inv.status === 'VERIFIED' || inv.status === 'RECEIVED'
-    ).length;
-    const approvedCount = myInvoices.filter(inv =>
-        inv.financeApproval?.status === 'APPROVED'
-    ).length;
-    const rejectedCount = myInvoices.filter(inv =>
-        inv.financeApproval?.status === 'REJECTED'
-    ).length;
-
     const handleApprove = async (invoiceId) => {
-        if (!selectedPM) {
-            setError('Please select a Project Manager to forward the invoice to.');
-            return;
-        }
         try {
             setProcessingId(invoiceId);
-            const res = await fetch(`/api/finance/approve/${invoiceId}`, {
+            const res = await fetch(`/api/pm/approve/${invoiceId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'APPROVE', notes, assignedPM: selectedPM })
+                body: JSON.stringify({ action: 'APPROVE', notes })
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error);
             setActionModal(null);
             setNotes('');
-            setSelectedPM('');
-            setSuccessMsg('Invoice approved and forwarded to PM successfully!');
+            setSuccessMsg('Invoice approved successfully!');
             setTimeout(() => setSuccessMsg(null), 4000);
             fetchInvoices();
         } catch (err) {
@@ -154,7 +116,7 @@ export default function FinanceApprovalQueuePage() {
         }
         try {
             setProcessingId(invoiceId);
-            const res = await fetch(`/api/finance/approve/${invoiceId}`, {
+            const res = await fetch(`/api/pm/approve/${invoiceId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'REJECT', notes })
@@ -163,7 +125,7 @@ export default function FinanceApprovalQueuePage() {
             if (!res.ok) throw new Error(data.error);
             setActionModal(null);
             setNotes('');
-            setSuccessMsg('Invoice rejected. The vendor has been notified.');
+            setSuccessMsg('Invoice rejected. Vendor and Finance User have been notified.');
             setTimeout(() => setSuccessMsg(null), 4000);
             fetchInvoices();
         } catch (err) {
@@ -189,6 +151,12 @@ export default function FinanceApprovalQueuePage() {
 
     return (
         <div className="space-y-6 pb-10">
+            {/* Page Header */}
+            <div>
+                <h1 className="text-2xl font-black text-slate-800 tracking-tight">PM Approval Queue</h1>
+                <p className="text-sm text-slate-400 mt-1">Review invoices forwarded to you by Finance</p>
+            </div>
+
             {/* Alerts */}
             <AnimatePresence>
                 {error && (
@@ -223,15 +191,13 @@ export default function FinanceApprovalQueuePage() {
                             key={tab.key}
                             onClick={() => setActiveTab(tab.key)}
                             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap border ${activeTab === tab.key
-                                ? `${colors.active} shadow-sm`
-                                : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50 border-transparent'
+                                    ? `${colors.active} shadow-sm`
+                                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50 border-transparent'
                                 }`}
                         >
                             <Icon name={tab.icon} size={16} />
                             {tab.label}
-                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${activeTab === tab.key
-                                ? colors.badge
-                                : 'bg-slate-100 text-slate-400'
+                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${activeTab === tab.key ? colors.badge : 'bg-slate-100 text-slate-400'
                                 }`}>{tab.count}</span>
                         </button>
                     );
@@ -262,7 +228,7 @@ export default function FinanceApprovalQueuePage() {
                 ) : (
                     filteredInvoices.map((inv, idx) => {
                         const sc = getStatus(inv.status);
-                        const isPending = !inv.financeApproval?.status || inv.financeApproval?.status === 'PENDING';
+                        const isPending = !inv.pmApproval?.status || inv.pmApproval?.status === 'PENDING';
                         return (
                             <motion.div
                                 key={inv.id}
@@ -276,7 +242,7 @@ export default function FinanceApprovalQueuePage() {
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                         {/* Left: Invoice Info */}
                                         <div className="flex items-center gap-3 min-w-0">
-                                            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100/50 flex items-center justify-center font-bold text-indigo-600 text-xs shrink-0">
+                                            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-violet-50 to-indigo-50 border border-violet-100/50 flex items-center justify-center font-bold text-violet-600 text-xs shrink-0">
                                                 {inv.vendorName?.substring(0, 2).toUpperCase() || 'NA'}
                                             </div>
                                             <div className="min-w-0">
@@ -292,7 +258,7 @@ export default function FinanceApprovalQueuePage() {
                                                     {inv.vendorCode && (
                                                         <>
                                                             <span>·</span>
-                                                            <span className="font-mono text-indigo-500 font-semibold">{inv.vendorCode}</span>
+                                                            <span className="font-mono text-violet-500 font-semibold">{inv.vendorCode}</span>
                                                         </>
                                                     )}
                                                     {inv.date && (
@@ -311,41 +277,39 @@ export default function FinanceApprovalQueuePage() {
                                         </p>
                                     </div>
 
-                                    {/* Meta Tags Row */}
-                                    {(inv.project || inv.poNumber || inv.costCenter || inv.financeApproval?.notes || inv.originalName) && (
-                                        <div className="flex flex-wrap items-center gap-2 mt-3 pl-13 sm:pl-14">
-                                            {inv.originalName && (
-                                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-lg">
-                                                    <Icon name="FileText" size={10} /> {inv.originalName}
-                                                </span>
-                                            )}
-                                            {inv.project && (
-                                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-lg">
-                                                    <Icon name="FolderOpen" size={10} /> {inv.project}
-                                                </span>
-                                            )}
-                                            {inv.poNumber && (
-                                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-lg">
-                                                    <Icon name="Hash" size={10} /> PO: {inv.poNumber}
-                                                </span>
-                                            )}
-                                            {inv.costCenter && (
-                                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-lg">
-                                                    <Icon name="MapPin" size={10} /> {inv.costCenter}
-                                                </span>
-                                            )}
-                                            {inv.assignedPM && inv.financeApproval?.status === 'APPROVED' && (
-                                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-500 bg-indigo-50 px-2 py-1 rounded-lg">
-                                                    <Icon name="UserCheck" size={10} /> Forwarded to PM
-                                                </span>
-                                            )}
-                                            {inv.financeApproval?.status === 'REJECTED' && inv.financeApproval?.notes && (
-                                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-500 bg-rose-50 px-2 py-1 rounded-lg max-w-xs truncate">
-                                                    <Icon name="MessageSquare" size={10} /> {inv.financeApproval.notes}
-                                                </span>
-                                            )}
-                                        </div>
-                                    )}
+                                    {/* Info Tags */}
+                                    <div className="flex flex-wrap items-center gap-2 mt-3 pl-13 sm:pl-14">
+                                        {inv.financeApproval?.approvedBy && (
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-500 bg-emerald-50 px-2 py-1 rounded-lg">
+                                                <Icon name="ShieldCheck" size={10} /> Finance Approved
+                                            </span>
+                                        )}
+                                        {inv.financeApproval?.notes && (
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-50 px-2 py-1 rounded-lg max-w-xs truncate" title={inv.financeApproval.notes}>
+                                                <Icon name="MessageSquare" size={10} /> {inv.financeApproval.notes}
+                                            </span>
+                                        )}
+                                        {inv.originalName && (
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-lg">
+                                                <Icon name="FileText" size={10} /> {inv.originalName}
+                                            </span>
+                                        )}
+                                        {inv.poNumber && (
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-lg">
+                                                <Icon name="Hash" size={10} /> PO: {inv.poNumber}
+                                            </span>
+                                        )}
+                                        {inv.project && (
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-lg">
+                                                <Icon name="FolderOpen" size={10} /> {inv.project}
+                                            </span>
+                                        )}
+                                        {inv.pmApproval?.status === 'REJECTED' && inv.pmApproval?.notes && (
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-500 bg-rose-50 px-2 py-1 rounded-lg max-w-xs truncate">
+                                                <Icon name="MessageSquare" size={10} /> {inv.pmApproval.notes}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {/* Action Bar */}
@@ -357,7 +321,7 @@ export default function FinanceApprovalQueuePage() {
                                             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-white border border-slate-200 text-slate-600 text-[11px] font-bold hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-all"
                                         >
                                             <Icon name="Eye" size={14} />
-                                            <span className="hidden xs:inline">View Doc</span>
+                                            View Doc
                                         </button>
                                         <a
                                             href={`/api/invoices/${inv.id}/file`}
@@ -365,7 +329,7 @@ export default function FinanceApprovalQueuePage() {
                                             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-white border border-slate-200 text-slate-600 text-[11px] font-bold hover:bg-violet-50 hover:text-violet-600 hover:border-violet-200 transition-all"
                                         >
                                             <Icon name="Download" size={14} />
-                                            <span className="hidden xs:inline">Download</span>
+                                            Download
                                         </a>
                                     </div>
 
@@ -379,7 +343,7 @@ export default function FinanceApprovalQueuePage() {
                                                     className="inline-flex items-center gap-1.5 h-8 px-4 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition-all disabled:opacity-50"
                                                 >
                                                     <Icon name="CheckCircle2" size={14} />
-                                                    Accept
+                                                    Approve
                                                 </button>
                                                 <button
                                                     onClick={() => setActionModal({ invoice: inv, type: 'reject' })}
@@ -391,14 +355,12 @@ export default function FinanceApprovalQueuePage() {
                                                 </button>
                                             </>
                                         ) : (
-                                            <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide px-3 py-1.5 rounded-lg ${inv.financeApproval?.status === 'APPROVED'
-                                                ? 'bg-emerald-50 text-emerald-600'
-                                                : inv.financeApproval?.status === 'REJECTED'
-                                                    ? 'bg-rose-50 text-rose-600'
-                                                    : 'bg-slate-100 text-slate-500'
+                                            <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide px-3 py-1.5 rounded-lg ${inv.pmApproval?.status === 'APPROVED'
+                                                    ? 'bg-emerald-50 text-emerald-600'
+                                                    : 'bg-rose-50 text-rose-600'
                                                 }`}>
-                                                <Icon name={inv.financeApproval?.status === 'APPROVED' ? 'CheckCircle2' : inv.financeApproval?.status === 'REJECTED' ? 'XCircle' : 'Clock'} size={12} />
-                                                {inv.financeApproval?.status === 'APPROVED' ? 'Accepted by you' : inv.financeApproval?.status === 'REJECTED' ? 'Rejected by you' : 'Pending'}
+                                                <Icon name={inv.pmApproval?.status === 'APPROVED' ? 'CheckCircle2' : 'XCircle'} size={12} />
+                                                {inv.pmApproval?.status === 'APPROVED' ? 'Approved by you' : 'Rejected by you'}
                                             </span>
                                         )}
                                     </div>
@@ -409,13 +371,13 @@ export default function FinanceApprovalQueuePage() {
                 )}
             </div>
 
-            {/* ── Approve Modal (with PM selection) ── */}
+            {/* ── Approve Modal ── */}
             <AnimatePresence>
                 {actionModal?.type === 'approve' && (
                     <motion.div
                         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                         className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-                        onClick={() => { setActionModal(null); setNotes(''); setSelectedPM(''); setError(null); }}
+                        onClick={() => { setActionModal(null); setNotes(''); setError(null); }}
                     >
                         <motion.div
                             initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
@@ -429,8 +391,8 @@ export default function FinanceApprovalQueuePage() {
                                         <Icon name="CheckCircle2" size={20} />
                                     </div>
                                     <div>
-                                        <h2 className="font-bold text-slate-800 text-lg">Accept & Forward to PM</h2>
-                                        <p className="text-xs text-slate-400">This invoice will be sent to the selected Project Manager for approval</p>
+                                        <h2 className="font-bold text-slate-800 text-lg">Approve Invoice</h2>
+                                        <p className="text-xs text-slate-400">This will mark the invoice as fully approved</p>
                                     </div>
                                 </div>
                             </div>
@@ -447,37 +409,15 @@ export default function FinanceApprovalQueuePage() {
                                     </div>
                                 </div>
 
-                                {/* PM Selection */}
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
-                                        Select Project Manager <span className="text-rose-500">*</span>
-                                    </label>
-                                    <select
-                                        value={selectedPM}
-                                        onChange={(e) => setSelectedPM(e.target.value)}
-                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all appearance-none cursor-pointer"
-                                    >
-                                        <option value="">Choose a PM to forward to...</option>
-                                        {pms.map((pm) => (
-                                            <option key={pm.id} value={pm.id}>
-                                                {pm.name} ({pm.email}){pm.department ? ` — ${pm.department}` : ''}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    {pms.length === 0 && (
-                                        <p className="text-[10px] text-amber-600 mt-1 font-medium">No PMs found. Make sure at least one PM has signed up.</p>
-                                    )}
-                                </div>
-
                                 {/* Notes */}
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Notes (optional)</label>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Notes for Vendor (optional)</label>
                                     <textarea
                                         value={notes}
                                         onChange={(e) => setNotes(e.target.value)}
                                         rows={2}
                                         className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all resize-none"
-                                        placeholder="Add any notes for the PM..."
+                                        placeholder="Add any approval notes..."
                                     />
                                 </div>
                             </div>
@@ -485,20 +425,20 @@ export default function FinanceApprovalQueuePage() {
                             {/* Actions */}
                             <div className="px-5 pb-5 flex gap-3">
                                 <button
-                                    onClick={() => { setActionModal(null); setNotes(''); setSelectedPM(''); setError(null); }}
+                                    onClick={() => { setActionModal(null); setNotes(''); setError(null); }}
                                     className="flex-1 px-4 py-3 border border-slate-200 text-slate-600 text-sm font-bold rounded-xl hover:bg-slate-50 transition-all"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={() => handleApprove(actionModal.invoice.id)}
-                                    disabled={processingId || !selectedPM}
+                                    disabled={processingId}
                                     className="flex-1 px-4 py-3 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                 >
                                     {processingId ? (
                                         <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Processing...</>
                                     ) : (
-                                        <><Icon name="Send" size={16} /> Approve & Send to PM</>
+                                        <><Icon name="CheckCircle2" size={16} /> Approve Invoice</>
                                     )}
                                 </button>
                             </div>
@@ -528,7 +468,7 @@ export default function FinanceApprovalQueuePage() {
                                     </div>
                                     <div>
                                         <h2 className="font-bold text-slate-800 text-lg">Reject Invoice</h2>
-                                        <p className="text-xs text-slate-400">The vendor will be notified about this rejection</p>
+                                        <p className="text-xs text-slate-400">Both the Vendor and Finance User will be notified</p>
                                     </div>
                                 </div>
                             </div>
@@ -545,6 +485,22 @@ export default function FinanceApprovalQueuePage() {
                                     </div>
                                 </div>
 
+                                {/* Who gets notified */}
+                                <div className="bg-amber-50 rounded-xl p-3 border border-amber-100">
+                                    <p className="text-[11px] font-bold text-amber-700 flex items-center gap-1.5">
+                                        <Icon name="Bell" size={12} />
+                                        Notification will be sent to:
+                                    </p>
+                                    <div className="flex items-center gap-3 mt-2">
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-1 rounded-md">
+                                            <Icon name="Building" size={10} /> Vendor
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-1 rounded-md">
+                                            <Icon name="Calculator" size={10} /> Finance User
+                                        </span>
+                                    </div>
+                                </div>
+
                                 {/* Rejection Reason */}
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
@@ -557,7 +513,7 @@ export default function FinanceApprovalQueuePage() {
                                         className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-400 transition-all resize-none"
                                         placeholder="Explain why this invoice is being rejected..."
                                     />
-                                    <p className="text-[10px] text-slate-400 mt-1">This message will be visible to the vendor.</p>
+                                    <p className="text-[10px] text-slate-400 mt-1">This message will be visible to both the Vendor and Finance User.</p>
                                 </div>
                             </div>
 
@@ -577,7 +533,7 @@ export default function FinanceApprovalQueuePage() {
                                     {processingId ? (
                                         <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Processing...</>
                                     ) : (
-                                        <><Icon name="XCircle" size={16} /> Reject & Notify Vendor</>
+                                        <><Icon name="XCircle" size={16} /> Reject Invoice</>
                                     )}
                                 </button>
                             </div>

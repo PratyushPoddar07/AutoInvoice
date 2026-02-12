@@ -33,6 +33,7 @@ export async function POST(request) {
         const amount = formData.get('amount');
         const invoiceNumber = formData.get('invoiceNumber');
         const invoiceDate = formData.get('invoiceDate');
+        const assignedFinanceUser = formData.get('assignedFinanceUser');
         const notes = formData.get('notes');
 
         // Additional document files
@@ -68,6 +69,7 @@ export async function POST(request) {
             fileUrl: invoiceFileUrl,
             project: project || null,
             assignedPM: assignedPM || null,
+            assignedFinanceUser: assignedFinanceUser || null,
             pmApproval: { status: 'PENDING' },
             financeApproval: { status: 'PENDING' },
             hilReview: { status: 'PENDING' },

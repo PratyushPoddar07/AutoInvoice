@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 export default function VendorSubmitPage() {
     const [projects, setProjects] = useState([]);
     const [pms, setPMs] = useState([]);
+    const [financeUsers, setFinanceUsers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
@@ -24,13 +25,15 @@ export default function VendorSubmitPage() {
         billingMonth: '',
         project: '',
         assignedPM: '',
+        assignedFinanceUser: '',
         notes: ''
     });
 
     useEffect(() => {
-        // Fetch available projects and PMs
+        // Fetch available projects, PMs, and Finance Users
         fetchProjects();
         fetchPMs();
+        fetchFinanceUsers();
     }, []);
 
     const fetchProjects = async () => {
@@ -50,6 +53,16 @@ export default function VendorSubmitPage() {
             if (res.ok) setPMs(data.pms || []);
         } catch (err) {
             console.error('Error fetching PMs:', err);
+        }
+    };
+
+    const fetchFinanceUsers = async () => {
+        try {
+            const res = await fetch('/api/finance-users');
+            const data = await res.json();
+            if (res.ok) setFinanceUsers(data.financeUsers || []);
+        } catch (err) {
+            console.error('Error fetching Finance Users:', err);
         }
     };
 
@@ -82,6 +95,7 @@ export default function VendorSubmitPage() {
             submitData.append('billingMonth', formData.billingMonth);
             submitData.append('project', formData.project);
             submitData.append('assignedPM', formData.assignedPM);
+            submitData.append('assignedFinanceUser', formData.assignedFinanceUser);
             submitData.append('notes', formData.notes);
 
             const res = await fetch('/api/vendor/submit', {
@@ -104,6 +118,7 @@ export default function VendorSubmitPage() {
                 billingMonth: '',
                 project: '',
                 assignedPM: '',
+                assignedFinanceUser: '',
                 notes: ''
             });
             if (invoiceRef.current) invoiceRef.current.value = '';
@@ -226,21 +241,7 @@ export default function VendorSubmitPage() {
                             </div>
                         </div>
 
-                        {/* PM Selection */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Assign to Project Manager</label>
-                                <select
-                                    value={formData.assignedPM}
-                                    onChange={(e) => setFormData({ ...formData, assignedPM: e.target.value })}
-                                    className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                >
-                                    <option value="">Select PM (Optional)</option>
-                                    {pms.map(pm => (
-                                        <option key={pm.id} value={pm.id}>{pm.name}</option>
-                                    ))}
-                                </select>
-                            </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-1">Project</label>
                                 <select
@@ -251,6 +252,22 @@ export default function VendorSubmitPage() {
                                     <option value="">Select Project (Optional)</option>
                                     {projects.map(p => (
                                         <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">
+                                    Assign to Finance User <span className="text-red-400">*</span>
+                                </label>
+                                <select
+                                    value={formData.assignedFinanceUser}
+                                    onChange={(e) => setFormData({ ...formData, assignedFinanceUser: e.target.value })}
+                                    required
+                                    className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                >
+                                    <option value="">Select Finance User</option>
+                                    {financeUsers.map(fu => (
+                                        <option key={fu.id} value={fu.id}>{fu.name}</option>
                                     ))}
                                 </select>
                             </div>
