@@ -12,6 +12,7 @@ export default function AuditLogPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [filterAction, setFilterAction] = useState("ALL");
     const [currentPage, setCurrentPage] = useState(1);
+    const [exporting, setExporting] = useState(false);
     const itemsPerPage = 20;
 
     useEffect(() => {
@@ -52,34 +53,6 @@ export default function AuditLogPage() {
         setCurrentPage(newPage);
     };
 
-    const handleExport = () => {
-        if (filteredLogs.length === 0) {
-            toast.error("No data to export");
-            return;
-        }
-
-        const headers = ["Timestamp", "User", "Action", "Details", "Invoice ID"];
-        const csvContent = [
-            headers.join(","),
-            ...filteredLogs.map(log => [
-                new Date(log.timestamp).toISOString(),
-                log.username || "System",
-                log.action,
-                `"${(log.details || "").replace(/"/g, '""')}"`,
-                log.invoice_id || ""
-            ].join(","))
-        ].join("\n");
-
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", `audit_request_${new Date().toISOString().split('T')[0]}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
 
     const actionColors = {
         UPDATE: "bg-blue-50 text-blue-700 border-blue-100",
@@ -134,7 +107,7 @@ export default function AuditLogPage() {
 
             // Generate CSV content
             const headers = ["Timestamp", "User Name", "User Type", "Action Category", "Action Type", "Details / Description"];
-            
+
             const csvRows = [
                 // Add header row
                 headers.map(escapeCSV).join(","),
@@ -316,11 +289,10 @@ export default function AuditLogPage() {
                                     <button
                                         key={page}
                                         onClick={() => handlePageChange(page)}
-                                        className={`w-10 h-10 rounded-xl font-medium text-sm transition-all ${
-                                            currentPage === page
+                                        className={`w-10 h-10 rounded-xl font-medium text-sm transition-all ${currentPage === page
                                                 ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20'
                                                 : 'bg-white border border-gray-200 text-gray-600 hover:bg-slate-50'
-                                        }`}
+                                            }`}
                                     >
                                         {page}
                                     </button>
